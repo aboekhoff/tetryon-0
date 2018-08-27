@@ -1,0 +1,24 @@
+{
+  "name": "tetryon",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "babelify src/index.js -o dist/tetryon.js -t [babelify]",
+    "watch": "watchify src/index.js -o dist/tetryon.js -t [babelify]"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.3",
+    "babel-preset-env": "^1.7.0",
+    "babel-watch": "^2.0.7",
+    "babelify": "^8.0.0",
+    "browserify": "^16.2.2",
+    "watchify": "^3.11.0"
+  },
+  "dependencies": {
+    "pixi.js": "^4.8.1"
+  }
+}
