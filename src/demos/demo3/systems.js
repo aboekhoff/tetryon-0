@@ -1,6 +1,6 @@
 import Game from '../../Game';
 import components from './components';
-import { grid, actors, context, canvas, BULLET, ENEMY, PLAYER } from './shared';
+import { grid, actors, stage, camera, BULLET, ENEMY, PLAYER } from './shared';
 import { angleBetween, turningAngle, wrapRotation, clamp, dist } from '../../Math.js';
 import { makeBullet, makeExplosion } from './actors';
 
@@ -198,11 +198,10 @@ Game.defineSystems({
             const impactX = Math.cos(impactAngle);
             const impactY = Math.sin(impactAngle);
 
-            t1.x -= impactX * (depth / 2);
-            t1.y -= impactX * (depth / 2);
-
-            t2.x += impactX * (depth / 2);
-            t2.y += impactY * (depth / 2);
+            t1.x -= impactX * (depth / 6);
+            t1.y -= impactX * (depth / 6);
+            t2.x += impactX * (depth / 6);
+            t2.y += impactY * (depth / 6);
 
             // f2.x += v1.x;
             // f2.y += v1.y;
@@ -307,6 +306,42 @@ Game.defineSystems({
       if (e.duration.time <= 0) {
         e.release();
       }
+    }
+  },
+
+  camera: {
+    run() {
+      const { x: x1, y: y1, target, threshold, offset } = camera;
+
+      stage.pivot.x = x1;
+      stage.pivot.y = y1;
+      
+      const { orientation } = target.state;
+      let { x: x2, y: y2 } = target.transform;
+
+      switch (orientation) {
+        case 'right':
+          x2 += offset;
+          break;
+        case 'left':
+          x2 -= offset; 
+          break;
+        case 'up':
+          y2 -= offset;
+          break;
+        case 'down':
+          y2 += offset;
+          break;
+      }
+
+      const dx = x2 - x1;
+      const cx = Math.abs(dx) > threshold ? 0.02 : 0.01;
+
+      const dy = y2 - y1;
+      const cy = Math.abs(dy) > threshold ? 0.02 : 0.01;
+
+      camera.x += dx * cx;
+      camera.y += dy * cy;
     }
   }
 });

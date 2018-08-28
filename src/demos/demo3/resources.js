@@ -36,6 +36,11 @@ export const textures = {
   humans: {},
   monsters: {},
   particles: {},
+  dungeon: [],
+}
+
+export const maps = {
+
 }
 
 const enqueuedMonsters = [];
@@ -100,16 +105,59 @@ function processParticleAssets() {
   });
 }
 
+function enqueueDungeonAssets() {
+  PIXI.loader.add('dungeon', 'assets/tiles/dungeon_tileset_32.png');
+}
+
+// using the 32 x 32 dungeon tile set
+function processDungeonAssets() {
+  const SIZE = 32;
+
+  const resource = PIXI.loader.resources['dungeon'];
+  const baseTexture = resource.texture.baseTexture;
+  
+  for (let y = 0; y < baseTexture.height; y += SIZE) {
+    for (let x = 0; x < baseTexture.width; x += SIZE) {
+      const rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
+      const texture = new PIXI.Texture(baseTexture, rectangle);
+      textures.dungeon.push(texture);
+    }
+  }
+}
+
+const MAPS = ['map1'];
+
+function enqueueMapAssets() {
+  MAPS.forEach(map => {
+    PIXI.loader.add(map, `assets/maps/${map}.txt`);
+  });
+}
+
+function processMapAssets() {
+  MAPS.forEach(map => {
+    const { data } = PIXI.loader.resources[map];
+    const rows = data.split(/\s+/);
+    const grid = rows.map(row => row.split('').map(n => parseInt(n, 36)));
+    maps[map] = grid;
+  });
+
+  console.log(maps);
+}
+
 export function load(callback) {
   enqueueHumanAssets();
   enqueueParticleAssets();
+  enqueueDungeonAssets();
+  enqueueMapAssets();
 
   PIXI.loader.load((loader, resources) => {
     processHumanAssets();
     processParticleAssets();
-    console.log(resources);
-    console.log(loader);
+    processDungeonAssets();
+    processMapAssets();
     console.log(textures);
     if (callback) { callback(); }
   })
 }
+
+const callbacks = [];

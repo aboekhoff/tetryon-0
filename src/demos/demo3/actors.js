@@ -1,6 +1,7 @@
 import Game from '../../Game';
 import { actors, rng, BULLET, ENEMY, PLAYER } from './shared';
 import { textures } from './resources';
+import { world } from './world';
 
 function makeHumanAnimations(resource) {
   return {
@@ -82,7 +83,7 @@ export function makeEnemy(x, y, avatar) {
 
   e.transform = { x, y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.15 };
+  e.velocity = { x: 0, y: 0, drag: 0.25 };
   e.state = { orientation: 'down', moving: false },
   e.targetControl = {};
   e.steeringControl = {};
@@ -95,9 +96,9 @@ export function makeEnemy(x, y, avatar) {
 export function makePlayer(x, y, avatar) {
   const e = Game.createEntity();
 
-  e.transform = { x: 200, y: 200, rotation: 0 };
+  e.transform = { x: world.width / 2, y: world.width / 2, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.15 };
+  e.velocity = { x: 0, y: 0, drag: 0.24 };
   e.state = { orientation: 'down', moving: false },
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations('ninja1');
@@ -108,4 +109,6 @@ export function makePlayer(x, y, avatar) {
 
   window.player = e;
   actors.player = e;
+
+  return e;
 }

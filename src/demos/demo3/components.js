@@ -7,7 +7,17 @@ export default Game.defineComponents({
   Velocity: { x: 0, y: 0 },
   Duration: { time: 0 },
   Orientation: { direction: 'right' },
+  Reference: { id: null },
   TargetControl: { targetId: null },
+  Effect: {
+    targetId: null,
+    component: null,
+    property: null,
+    start: 0,
+    end: 0,
+    range: 0,
+    theta: 0,
+  },
   Weapon: {
     rateOfFire: 100,
     cooldown: 0,
@@ -25,6 +35,7 @@ export default Game.defineComponents({
     orientation: 'down',
     moving: false,
     firing: false,
+    hitpoints: 10,
   },
   AnimationControl: {
     right: null,

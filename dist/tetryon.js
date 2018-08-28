@@ -1959,6 +1959,3013 @@ module.exports = {
 };
 
 },{}],9:[function(require,module,exports){
+(function (global){
+/*!
+ *  howler.js v2.0.15
+ *  howlerjs.com
+ *
+ *  (c) 2013-2018, James Simpson of GoldFire Studios
+ *  goldfirestudios.com
+ *
+ *  MIT License
+ */
+
+(function() {
+
+  'use strict';
+
+  /** Global Methods **/
+  /***************************************************************************/
+
+  /**
+   * Create the global controller. All contained methods and properties apply
+   * to all sounds that are currently playing or will be in the future.
+   */
+  var HowlerGlobal = function() {
+    this.init();
+  };
+  HowlerGlobal.prototype = {
+    /**
+     * Initialize the global Howler object.
+     * @return {Howler}
+     */
+    init: function() {
+      var self = this || Howler;
+
+      // Create a global ID counter.
+      self._counter = 1000;
+
+      // Internal properties.
+      self._codecs = {};
+      self._howls = [];
+      self._muted = false;
+      self._volume = 1;
+      self._canPlayEvent = 'canplaythrough';
+      self._navigator = (typeof window !== 'undefined' && window.navigator) ? window.navigator : null;
+
+      // Public properties.
+      self.masterGain = null;
+      self.noAudio = false;
+      self.usingWebAudio = true;
+      self.autoSuspend = true;
+      self.ctx = null;
+
+      // Set to false to disable the auto iOS enabler.
+      self.mobileAutoEnable = true;
+
+      // Setup the various state values for global tracking.
+      self._setup();
+
+      return self;
+    },
+
+    /**
+     * Get/set the global volume for all sounds.
+     * @param  {Float} vol Volume from 0.0 to 1.0.
+     * @return {Howler/Float}     Returns self or current volume.
+     */
+    volume: function(vol) {
+      var self = this || Howler;
+      vol = parseFloat(vol);
+
+      // If we don't have an AudioContext created yet, run the setup.
+      if (!self.ctx) {
+        setupAudioContext();
+      }
+
+      if (typeof vol !== 'undefined' && vol >= 0 && vol <= 1) {
+        self._volume = vol;
+
+        // Don't update any of the nodes if we are muted.
+        if (self._muted) {
+          return self;
+        }
+
+        // When using Web Audio, we just need to adjust the master gain.
+        if (self.usingWebAudio) {
+          self.masterGain.gain.setValueAtTime(vol, Howler.ctx.currentTime);
+        }
+
+        // Loop through and change volume for all HTML5 audio nodes.
+        for (var i=0; i<self._howls.length; i++) {
+          if (!self._howls[i]._webAudio) {
+            // Get all of the sounds in this Howl group.
+            var ids = self._howls[i]._getSoundIds();
+
+            // Loop through all sounds and change the volumes.
+            for (var j=0; j<ids.length; j++) {
+              var sound = self._howls[i]._soundById(ids[j]);
+
+              if (sound && sound._node) {
+                sound._node.volume = sound._volume * vol;
+              }
+            }
+          }
+        }
+
+        return self;
+      }
+
+      return self._volume;
+    },
+
+    /**
+     * Handle muting and unmuting globally.
+     * @param  {Boolean} muted Is muted or not.
+     */
+    mute: function(muted) {
+      var self = this || Howler;
+
+      // If we don't have an AudioContext created yet, run the setup.
+      if (!self.ctx) {
+        setupAudioContext();
+      }
+
+      self._muted = muted;
+
+      // With Web Audio, we just need to mute the master gain.
+      if (self.usingWebAudio) {
+        self.masterGain.gain.setValueAtTime(muted ? 0 : self._volume, Howler.ctx.currentTime);
+      }
+
+      // Loop through and mute all HTML5 Audio nodes.
+      for (var i=0; i<self._howls.length; i++) {
+        if (!self._howls[i]._webAudio) {
+          // Get all of the sounds in this Howl group.
+          var ids = self._howls[i]._getSoundIds();
+
+          // Loop through all sounds and mark the audio node as muted.
+          for (var j=0; j<ids.length; j++) {
+            var sound = self._howls[i]._soundById(ids[j]);
+
+            if (sound && sound._node) {
+              sound._node.muted = (muted) ? true : sound._muted;
+            }
+          }
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Unload and destroy all currently loaded Howl objects.
+     * @return {Howler}
+     */
+    unload: function() {
+      var self = this || Howler;
+
+      for (var i=self._howls.length-1; i>=0; i--) {
+        self._howls[i].unload();
+      }
+
+      // Create a new AudioContext to make sure it is fully reset.
+      if (self.usingWebAudio && self.ctx && typeof self.ctx.close !== 'undefined') {
+        self.ctx.close();
+        self.ctx = null;
+        setupAudioContext();
+      }
+
+      return self;
+    },
+
+    /**
+     * Check for codec support of specific extension.
+     * @param  {String} ext Audio file extention.
+     * @return {Boolean}
+     */
+    codecs: function(ext) {
+      return (this || Howler)._codecs[ext.replace(/^x-/, '')];
+    },
+
+    /**
+     * Setup various state values for global tracking.
+     * @return {Howler}
+     */
+    _setup: function() {
+      var self = this || Howler;
+
+      // Keeps track of the suspend/resume state of the AudioContext.
+      self.state = self.ctx ? self.ctx.state || 'running' : 'running';
+
+      // Automatically begin the 30-second suspend process
+      self._autoSuspend();
+
+      // Check if audio is available.
+      if (!self.usingWebAudio) {
+        // No audio is available on this system if noAudio is set to true.
+        if (typeof Audio !== 'undefined') {
+          try {
+            var test = new Audio();
+
+            // Check if the canplaythrough event is available.
+            if (typeof test.oncanplaythrough === 'undefined') {
+              self._canPlayEvent = 'canplay';
+            }
+          } catch(e) {
+            self.noAudio = true;
+          }
+        } else {
+          self.noAudio = true;
+        }
+      }
+
+      // Test to make sure audio isn't disabled in Internet Explorer.
+      try {
+        var test = new Audio();
+        if (test.muted) {
+          self.noAudio = true;
+        }
+      } catch (e) {}
+
+      // Check for supported codecs.
+      if (!self.noAudio) {
+        self._setupCodecs();
+      }
+
+      return self;
+    },
+
+    /**
+     * Check for browser support for various codecs and cache the results.
+     * @return {Howler}
+     */
+    _setupCodecs: function() {
+      var self = this || Howler;
+      var audioTest = null;
+
+      // Must wrap in a try/catch because IE11 in server mode throws an error.
+      try {
+        audioTest = (typeof Audio !== 'undefined') ? new Audio() : null;
+      } catch (err) {
+        return self;
+      }
+
+      if (!audioTest || typeof audioTest.canPlayType !== 'function') {
+        return self;
+      }
+
+      var mpegTest = audioTest.canPlayType('audio/mpeg;').replace(/^no$/, '');
+
+      // Opera version <33 has mixed MP3 support, so we need to check for and block it.
+      var checkOpera = self._navigator && self._navigator.userAgent.match(/OPR\/([0-6].)/g);
+      var isOldOpera = (checkOpera && parseInt(checkOpera[0].split('/')[1], 10) < 33);
+
+      self._codecs = {
+        mp3: !!(!isOldOpera && (mpegTest || audioTest.canPlayType('audio/mp3;').replace(/^no$/, ''))),
+        mpeg: !!mpegTest,
+        opus: !!audioTest.canPlayType('audio/ogg; codecs="opus"').replace(/^no$/, ''),
+        ogg: !!audioTest.canPlayType('audio/ogg; codecs="vorbis"').replace(/^no$/, ''),
+        oga: !!audioTest.canPlayType('audio/ogg; codecs="vorbis"').replace(/^no$/, ''),
+        wav: !!audioTest.canPlayType('audio/wav; codecs="1"').replace(/^no$/, ''),
+        aac: !!audioTest.canPlayType('audio/aac;').replace(/^no$/, ''),
+        caf: !!audioTest.canPlayType('audio/x-caf;').replace(/^no$/, ''),
+        m4a: !!(audioTest.canPlayType('audio/x-m4a;') || audioTest.canPlayType('audio/m4a;') || audioTest.canPlayType('audio/aac;')).replace(/^no$/, ''),
+        mp4: !!(audioTest.canPlayType('audio/x-mp4;') || audioTest.canPlayType('audio/mp4;') || audioTest.canPlayType('audio/aac;')).replace(/^no$/, ''),
+        weba: !!audioTest.canPlayType('audio/webm; codecs="vorbis"').replace(/^no$/, ''),
+        webm: !!audioTest.canPlayType('audio/webm; codecs="vorbis"').replace(/^no$/, ''),
+        dolby: !!audioTest.canPlayType('audio/mp4; codecs="ec-3"').replace(/^no$/, ''),
+        flac: !!(audioTest.canPlayType('audio/x-flac;') || audioTest.canPlayType('audio/flac;')).replace(/^no$/, '')
+      };
+
+      return self;
+    },
+
+    /**
+     * Mobile browsers will only allow audio to be played after a user interaction.
+     * Attempt to automatically unlock audio on the first user interaction.
+     * Concept from: http://paulbakaus.com/tutorials/html5/web-audio-on-ios/
+     * @return {Howler}
+     */
+    _enableMobileAudio: function() {
+      var self = this || Howler;
+
+      // Only run this on mobile devices if audio isn't already eanbled.
+      var isMobile = /iPhone|iPad|iPod|Android|BlackBerry|BB10|Silk|Mobi|Chrome/i.test(self._navigator && self._navigator.userAgent);
+      if (self._mobileEnabled || !self.ctx || !isMobile) {
+        return;
+      }
+
+      self._mobileEnabled = false;
+      self.mobileAutoEnable = false;
+
+      // Some mobile devices/platforms have distortion issues when opening/closing tabs and/or web views.
+      // Bugs in the browser (especially Mobile Safari) can cause the sampleRate to change from 44100 to 48000.
+      // By calling Howler.unload(), we create a new AudioContext with the correct sampleRate.
+      if (!self._mobileUnloaded && self.ctx.sampleRate !== 44100) {
+        self._mobileUnloaded = true;
+        self.unload();
+      }
+
+      // Scratch buffer for enabling iOS to dispose of web audio buffers correctly, as per:
+      // http://stackoverflow.com/questions/24119684
+      self._scratchBuffer = self.ctx.createBuffer(1, 1, 22050);
+
+      // Call this method on touch start to create and play a buffer,
+      // then check if the audio actually played to determine if
+      // audio has now been unlocked on iOS, Android, etc.
+      var unlock = function(e) {
+        // Fix Android can not play in suspend state.
+        Howler._autoResume();
+
+        // Create an empty buffer.
+        var source = self.ctx.createBufferSource();
+        source.buffer = self._scratchBuffer;
+        source.connect(self.ctx.destination);
+
+        // Play the empty buffer.
+        if (typeof source.start === 'undefined') {
+          source.noteOn(0);
+        } else {
+          source.start(0);
+        }
+
+        // Calling resume() on a stack initiated by user gesture is what actually unlocks the audio on Android Chrome >= 55.
+        if (typeof self.ctx.resume === 'function') {
+          self.ctx.resume();
+        }
+
+        // Setup a timeout to check that we are unlocked on the next event loop.
+        source.onended = function() {
+          source.disconnect(0);
+
+          // Update the unlocked state and prevent this check from happening again.
+          self._mobileEnabled = true;
+
+          // Remove the touch start listener.
+          document.removeEventListener('touchstart', unlock, true);
+          document.removeEventListener('touchend', unlock, true);
+          document.removeEventListener('click', unlock, true);
+
+          // Let all sounds know that audio has been unlocked.
+          for (var i=0; i<self._howls.length; i++) {
+            self._howls[i]._emit('unlock');
+          }
+        };
+      };
+
+      // Setup a touch start listener to attempt an unlock in.
+      document.addEventListener('touchstart', unlock, true);
+      document.addEventListener('touchend', unlock, true);
+      document.addEventListener('click', unlock, true);
+
+      return self;
+    },
+
+    /**
+     * Automatically suspend the Web Audio AudioContext after no sound has played for 30 seconds.
+     * This saves processing/energy and fixes various browser-specific bugs with audio getting stuck.
+     * @return {Howler}
+     */
+    _autoSuspend: function() {
+      var self = this;
+
+      if (!self.autoSuspend || !self.ctx || typeof self.ctx.suspend === 'undefined' || !Howler.usingWebAudio) {
+        return;
+      }
+
+      // Check if any sounds are playing.
+      for (var i=0; i<self._howls.length; i++) {
+        if (self._howls[i]._webAudio) {
+          for (var j=0; j<self._howls[i]._sounds.length; j++) {
+            if (!self._howls[i]._sounds[j]._paused) {
+              return self;
+            }
+          }
+        }
+      }
+
+      if (self._suspendTimer) {
+        clearTimeout(self._suspendTimer);
+      }
+
+      // If no sound has played after 30 seconds, suspend the context.
+      self._suspendTimer = setTimeout(function() {
+        if (!self.autoSuspend) {
+          return;
+        }
+
+        self._suspendTimer = null;
+        self.state = 'suspending';
+        self.ctx.suspend().then(function() {
+          self.state = 'suspended';
+
+          if (self._resumeAfterSuspend) {
+            delete self._resumeAfterSuspend;
+            self._autoResume();
+          }
+        });
+      }, 30000);
+
+      return self;
+    },
+
+    /**
+     * Automatically resume the Web Audio AudioContext when a new sound is played.
+     * @return {Howler}
+     */
+    _autoResume: function() {
+      var self = this;
+
+      if (!self.ctx || typeof self.ctx.resume === 'undefined' || !Howler.usingWebAudio) {
+        return;
+      }
+
+      if (self.state === 'running' && self._suspendTimer) {
+        clearTimeout(self._suspendTimer);
+        self._suspendTimer = null;
+      } else if (self.state === 'suspended') {
+        self.ctx.resume().then(function() {
+          self.state = 'running';
+
+          // Emit to all Howls that the audio has resumed.
+          for (var i=0; i<self._howls.length; i++) {
+            self._howls[i]._emit('resume');
+          }
+        });
+
+        if (self._suspendTimer) {
+          clearTimeout(self._suspendTimer);
+          self._suspendTimer = null;
+        }
+      } else if (self.state === 'suspending') {
+        self._resumeAfterSuspend = true;
+      }
+
+      return self;
+    }
+  };
+
+  // Setup the global audio controller.
+  var Howler = new HowlerGlobal();
+
+  /** Group Methods **/
+  /***************************************************************************/
+
+  /**
+   * Create an audio group controller.
+   * @param {Object} o Passed in properties for this group.
+   */
+  var Howl = function(o) {
+    var self = this;
+
+    // Throw an error if no source is provided.
+    if (!o.src || o.src.length === 0) {
+      console.error('An array of source files must be passed with any new Howl.');
+      return;
+    }
+
+    self.init(o);
+  };
+  Howl.prototype = {
+    /**
+     * Initialize a new Howl group object.
+     * @param  {Object} o Passed in properties for this group.
+     * @return {Howl}
+     */
+    init: function(o) {
+      var self = this;
+
+      // If we don't have an AudioContext created yet, run the setup.
+      if (!Howler.ctx) {
+        setupAudioContext();
+      }
+
+      // Setup user-defined default properties.
+      self._autoplay = o.autoplay || false;
+      self._format = (typeof o.format !== 'string') ? o.format : [o.format];
+      self._html5 = o.html5 || false;
+      self._muted = o.mute || false;
+      self._loop = o.loop || false;
+      self._pool = o.pool || 5;
+      self._preload = (typeof o.preload === 'boolean') ? o.preload : true;
+      self._rate = o.rate || 1;
+      self._sprite = o.sprite || {};
+      self._src = (typeof o.src !== 'string') ? o.src : [o.src];
+      self._volume = o.volume !== undefined ? o.volume : 1;
+      self._xhrWithCredentials = o.xhrWithCredentials || false;
+
+      // Setup all other default properties.
+      self._duration = 0;
+      self._state = 'unloaded';
+      self._sounds = [];
+      self._endTimers = {};
+      self._queue = [];
+      self._playLock = false;
+
+      // Setup event listeners.
+      self._onend = o.onend ? [{fn: o.onend}] : [];
+      self._onfade = o.onfade ? [{fn: o.onfade}] : [];
+      self._onload = o.onload ? [{fn: o.onload}] : [];
+      self._onloaderror = o.onloaderror ? [{fn: o.onloaderror}] : [];
+      self._onplayerror = o.onplayerror ? [{fn: o.onplayerror}] : [];
+      self._onpause = o.onpause ? [{fn: o.onpause}] : [];
+      self._onplay = o.onplay ? [{fn: o.onplay}] : [];
+      self._onstop = o.onstop ? [{fn: o.onstop}] : [];
+      self._onmute = o.onmute ? [{fn: o.onmute}] : [];
+      self._onvolume = o.onvolume ? [{fn: o.onvolume}] : [];
+      self._onrate = o.onrate ? [{fn: o.onrate}] : [];
+      self._onseek = o.onseek ? [{fn: o.onseek}] : [];
+      self._onunlock = o.onunlock ? [{fn: o.onunlock}] : [];
+      self._onresume = [];
+
+      // Web Audio or HTML5 Audio?
+      self._webAudio = Howler.usingWebAudio && !self._html5;
+
+      // Automatically try to enable audio on iOS.
+      if (typeof Howler.ctx !== 'undefined' && Howler.ctx && Howler.mobileAutoEnable) {
+        Howler._enableMobileAudio();
+      }
+
+      // Keep track of this Howl group in the global controller.
+      Howler._howls.push(self);
+
+      // If they selected autoplay, add a play event to the load queue.
+      if (self._autoplay) {
+        self._queue.push({
+          event: 'play',
+          action: function() {
+            self.play();
+          }
+        });
+      }
+
+      // Load the source file unless otherwise specified.
+      if (self._preload) {
+        self.load();
+      }
+
+      return self;
+    },
+
+    /**
+     * Load the audio file.
+     * @return {Howler}
+     */
+    load: function() {
+      var self = this;
+      var url = null;
+
+      // If no audio is available, quit immediately.
+      if (Howler.noAudio) {
+        self._emit('loaderror', null, 'No audio support.');
+        return;
+      }
+
+      // Make sure our source is in an array.
+      if (typeof self._src === 'string') {
+        self._src = [self._src];
+      }
+
+      // Loop through the sources and pick the first one that is compatible.
+      for (var i=0; i<self._src.length; i++) {
+        var ext, str;
+
+        if (self._format && self._format[i]) {
+          // If an extension was specified, use that instead.
+          ext = self._format[i];
+        } else {
+          // Make sure the source is a string.
+          str = self._src[i];
+          if (typeof str !== 'string') {
+            self._emit('loaderror', null, 'Non-string found in selected audio sources - ignoring.');
+            continue;
+          }
+
+          // Extract the file extension from the URL or base64 data URI.
+          ext = /^data:audio\/([^;,]+);/i.exec(str);
+          if (!ext) {
+            ext = /\.([^.]+)$/.exec(str.split('?', 1)[0]);
+          }
+
+          if (ext) {
+            ext = ext[1].toLowerCase();
+          }
+        }
+
+        // Log a warning if no extension was found.
+        if (!ext) {
+          console.warn('No file extension was found. Consider using the "format" property or specify an extension.');
+        }
+
+        // Check if this extension is available.
+        if (ext && Howler.codecs(ext)) {
+          url = self._src[i];
+          break;
+        }
+      }
+
+      if (!url) {
+        self._emit('loaderror', null, 'No codec support for selected audio sources.');
+        return;
+      }
+
+      self._src = url;
+      self._state = 'loading';
+
+      // If the hosting page is HTTPS and the source isn't,
+      // drop down to HTML5 Audio to avoid Mixed Content errors.
+      if (window.location.protocol === 'https:' && url.slice(0, 5) === 'http:') {
+        self._html5 = true;
+        self._webAudio = false;
+      }
+
+      // Create a new sound object and add it to the pool.
+      new Sound(self);
+
+      // Load and decode the audio data for playback.
+      if (self._webAudio) {
+        loadBuffer(self);
+      }
+
+      return self;
+    },
+
+    /**
+     * Play a sound or resume previous playback.
+     * @param  {String/Number} sprite   Sprite name for sprite playback or sound id to continue previous.
+     * @param  {Boolean} internal Internal Use: true prevents event firing.
+     * @return {Number}          Sound ID.
+     */
+    play: function(sprite, internal) {
+      var self = this;
+      var id = null;
+
+      // Determine if a sprite, sound id or nothing was passed
+      if (typeof sprite === 'number') {
+        id = sprite;
+        sprite = null;
+      } else if (typeof sprite === 'string' && self._state === 'loaded' && !self._sprite[sprite]) {
+        // If the passed sprite doesn't exist, do nothing.
+        return null;
+      } else if (typeof sprite === 'undefined') {
+        // Use the default sound sprite (plays the full audio length).
+        sprite = '__default';
+
+        // Check if there is a single paused sound that isn't ended.
+        // If there is, play that sound. If not, continue as usual.
+        var num = 0;
+        for (var i=0; i<self._sounds.length; i++) {
+          if (self._sounds[i]._paused && !self._sounds[i]._ended) {
+            num++;
+            id = self._sounds[i]._id;
+          }
+        }
+
+        if (num === 1) {
+          sprite = null;
+        } else {
+          id = null;
+        }
+      }
+
+      // Get the selected node, or get one from the pool.
+      var sound = id ? self._soundById(id) : self._inactiveSound();
+
+      // If the sound doesn't exist, do nothing.
+      if (!sound) {
+        return null;
+      }
+
+      // Select the sprite definition.
+      if (id && !sprite) {
+        sprite = sound._sprite || '__default';
+      }
+
+      // If the sound hasn't loaded, we must wait to get the audio's duration.
+      // We also need to wait to make sure we don't run into race conditions with
+      // the order of function calls.
+      if (self._state !== 'loaded') {
+        // Set the sprite value on this sound.
+        sound._sprite = sprite;
+
+        // Makr this sounded as not ended in case another sound is played before this one loads.
+        sound._ended = false;
+
+        // Add the sound to the queue to be played on load.
+        var soundId = sound._id;
+        self._queue.push({
+          event: 'play',
+          action: function() {
+            self.play(soundId);
+          }
+        });
+
+        return soundId;
+      }
+
+      // Don't play the sound if an id was passed and it is already playing.
+      if (id && !sound._paused) {
+        // Trigger the play event, in order to keep iterating through queue.
+        if (!internal) {
+          self._loadQueue('play');
+        }
+
+        return sound._id;
+      }
+
+      // Make sure the AudioContext isn't suspended, and resume it if it is.
+      if (self._webAudio) {
+        Howler._autoResume();
+      }
+
+      // Determine how long to play for and where to start playing.
+      var seek = Math.max(0, sound._seek > 0 ? sound._seek : self._sprite[sprite][0] / 1000);
+      var duration = Math.max(0, ((self._sprite[sprite][0] + self._sprite[sprite][1]) / 1000) - seek);
+      var timeout = (duration * 1000) / Math.abs(sound._rate);
+
+      // Update the parameters of the sound
+      sound._paused = false;
+      sound._ended = false;
+      sound._sprite = sprite;
+      sound._seek = seek;
+      sound._start = self._sprite[sprite][0] / 1000;
+      sound._stop = (self._sprite[sprite][0] + self._sprite[sprite][1]) / 1000;
+      sound._loop = !!(sound._loop || self._sprite[sprite][2]);
+
+      // End the sound instantly if seek is at the end.
+      if (sound._seek >= sound._stop) {
+        self._ended(sound);
+        return;
+      }
+
+      // Begin the actual playback.
+      var node = sound._node;
+      if (self._webAudio) {
+        // Fire this when the sound is ready to play to begin Web Audio playback.
+        var playWebAudio = function() {
+          self._refreshBuffer(sound);
+
+          // Setup the playback params.
+          var vol = (sound._muted || self._muted) ? 0 : sound._volume;
+          node.gain.setValueAtTime(vol, Howler.ctx.currentTime);
+          sound._playStart = Howler.ctx.currentTime;
+
+          // Play the sound using the supported method.
+          if (typeof node.bufferSource.start === 'undefined') {
+            sound._loop ? node.bufferSource.noteGrainOn(0, seek, 86400) : node.bufferSource.noteGrainOn(0, seek, duration);
+          } else {
+            sound._loop ? node.bufferSource.start(0, seek, 86400) : node.bufferSource.start(0, seek, duration);
+          }
+
+          // Start a new timer if none is present.
+          if (timeout !== Infinity) {
+            self._endTimers[sound._id] = setTimeout(self._ended.bind(self, sound), timeout);
+          }
+
+          if (!internal) {
+            setTimeout(function() {
+              self._emit('play', sound._id);
+            }, 0);
+          }
+        };
+
+        if (Howler.state === 'running') {
+          playWebAudio();
+        } else {
+          self.once('resume', playWebAudio);
+
+          // Cancel the end timer.
+          self._clearTimer(sound._id);
+        }
+      } else {
+        // Fire this when the sound is ready to play to begin HTML5 Audio playback.
+        var playHtml5 = function() {
+          node.currentTime = seek;
+          node.muted = sound._muted || self._muted || Howler._muted || node.muted;
+          node.volume = sound._volume * Howler.volume();
+          node.playbackRate = sound._rate;
+
+          // Mobile browsers will throw an error if this is called without user interaction.
+          try {
+            var play = node.play();
+
+            // Support older browsers that don't support promises, and thus don't have this issue.
+            if (play && typeof Promise !== 'undefined' && (play instanceof Promise || typeof play.then === 'function')) {
+              // Implements a lock to prevent DOMException: The play() request was interrupted by a call to pause().
+              self._playLock = true;
+
+              // Releases the lock and executes queued actions.
+              play
+                .then(function() {
+                  self._playLock = false;
+                  if (!internal) {
+                    self._emit('play', sound._id);
+                  }
+                })
+                .catch(function() {
+                  self._playLock = false;
+                  self._emit('playerror', sound._id, 'Playback was unable to start. This is most commonly an issue ' +
+                    'on mobile devices and Chrome where playback was not within a user interaction.');
+                });
+            } else if (!internal) {
+              self._emit('play', sound._id);
+            }
+
+            // Setting rate before playing won't work in IE, so we set it again here.
+            node.playbackRate = sound._rate;
+
+            // If the node is still paused, then we can assume there was a playback issue.
+            if (node.paused) {
+              self._emit('playerror', sound._id, 'Playback was unable to start. This is most commonly an issue ' +
+                'on mobile devices and Chrome where playback was not within a user interaction.');
+              return;
+            }
+
+            // Setup the end timer on sprites or listen for the ended event.
+            if (sprite !== '__default' || sound._loop) {
+              self._endTimers[sound._id] = setTimeout(self._ended.bind(self, sound), timeout);
+            } else {
+              self._endTimers[sound._id] = function() {
+                // Fire ended on this audio node.
+                self._ended(sound);
+
+                // Clear this listener.
+                node.removeEventListener('ended', self._endTimers[sound._id], false);
+              };
+              node.addEventListener('ended', self._endTimers[sound._id], false);
+            }
+          } catch (err) {
+            self._emit('playerror', sound._id, err);
+          }
+        };
+
+        // Play immediately if ready, or wait for the 'canplaythrough'e vent.
+        var loadedNoReadyState = (window && window.ejecta) || (!node.readyState && Howler._navigator.isCocoonJS);
+        if (node.readyState >= 3 || loadedNoReadyState) {
+          playHtml5();
+        } else {
+          var listener = function() {
+            // Begin playback.
+            playHtml5();
+
+            // Clear this listener.
+            node.removeEventListener(Howler._canPlayEvent, listener, false);
+          };
+          node.addEventListener(Howler._canPlayEvent, listener, false);
+
+          // Cancel the end timer.
+          self._clearTimer(sound._id);
+        }
+      }
+
+      return sound._id;
+    },
+
+    /**
+     * Pause playback and save current position.
+     * @param  {Number} id The sound ID (empty to pause all in group).
+     * @return {Howl}
+     */
+    pause: function(id) {
+      var self = this;
+
+      // If the sound hasn't loaded or a play() promise is pending, add it to the load queue to pause when capable.
+      if (self._state !== 'loaded' || self._playLock) {
+        self._queue.push({
+          event: 'pause',
+          action: function() {
+            self.pause(id);
+          }
+        });
+
+        return self;
+      }
+
+      // If no id is passed, get all ID's to be paused.
+      var ids = self._getSoundIds(id);
+
+      for (var i=0; i<ids.length; i++) {
+        // Clear the end timer.
+        self._clearTimer(ids[i]);
+
+        // Get the sound.
+        var sound = self._soundById(ids[i]);
+
+        if (sound && !sound._paused) {
+          // Reset the seek position.
+          sound._seek = self.seek(ids[i]);
+          sound._rateSeek = 0;
+          sound._paused = true;
+
+          // Stop currently running fades.
+          self._stopFade(ids[i]);
+
+          if (sound._node) {
+            if (self._webAudio) {
+              // Make sure the sound has been created.
+              if (!sound._node.bufferSource) {
+                continue;
+              }
+
+              if (typeof sound._node.bufferSource.stop === 'undefined') {
+                sound._node.bufferSource.noteOff(0);
+              } else {
+                sound._node.bufferSource.stop(0);
+              }
+
+              // Clean up the buffer source.
+              self._cleanBuffer(sound._node);
+            } else if (!isNaN(sound._node.duration) || sound._node.duration === Infinity) {
+              sound._node.pause();
+            }
+          }
+        }
+
+        // Fire the pause event, unless `true` is passed as the 2nd argument.
+        if (!arguments[1]) {
+          self._emit('pause', sound ? sound._id : null);
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Stop playback and reset to start.
+     * @param  {Number} id The sound ID (empty to stop all in group).
+     * @param  {Boolean} internal Internal Use: true prevents event firing.
+     * @return {Howl}
+     */
+    stop: function(id, internal) {
+      var self = this;
+
+      // If the sound hasn't loaded, add it to the load queue to stop when capable.
+      if (self._state !== 'loaded' || self._playLock) {
+        self._queue.push({
+          event: 'stop',
+          action: function() {
+            self.stop(id);
+          }
+        });
+
+        return self;
+      }
+
+      // If no id is passed, get all ID's to be stopped.
+      var ids = self._getSoundIds(id);
+
+      for (var i=0; i<ids.length; i++) {
+        // Clear the end timer.
+        self._clearTimer(ids[i]);
+
+        // Get the sound.
+        var sound = self._soundById(ids[i]);
+
+        if (sound) {
+          // Reset the seek position.
+          sound._seek = sound._start || 0;
+          sound._rateSeek = 0;
+          sound._paused = true;
+          sound._ended = true;
+
+          // Stop currently running fades.
+          self._stopFade(ids[i]);
+
+          if (sound._node) {
+            if (self._webAudio) {
+              // Make sure the sound's AudioBufferSourceNode has been created.
+              if (sound._node.bufferSource) {
+                if (typeof sound._node.bufferSource.stop === 'undefined') {
+                  sound._node.bufferSource.noteOff(0);
+                } else {
+                  sound._node.bufferSource.stop(0);
+                }
+
+                // Clean up the buffer source.
+                self._cleanBuffer(sound._node);
+              }
+            } else if (!isNaN(sound._node.duration) || sound._node.duration === Infinity) {
+              sound._node.currentTime = sound._start || 0;
+              sound._node.pause();
+            }
+          }
+
+          if (!internal) {
+            self._emit('stop', sound._id);
+          }
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Mute/unmute a single sound or all sounds in this Howl group.
+     * @param  {Boolean} muted Set to true to mute and false to unmute.
+     * @param  {Number} id    The sound ID to update (omit to mute/unmute all).
+     * @return {Howl}
+     */
+    mute: function(muted, id) {
+      var self = this;
+
+      // If the sound hasn't loaded, add it to the load queue to mute when capable.
+      if (self._state !== 'loaded'|| self._playLock) {
+        self._queue.push({
+          event: 'mute',
+          action: function() {
+            self.mute(muted, id);
+          }
+        });
+
+        return self;
+      }
+
+      // If applying mute/unmute to all sounds, update the group's value.
+      if (typeof id === 'undefined') {
+        if (typeof muted === 'boolean') {
+          self._muted = muted;
+        } else {
+          return self._muted;
+        }
+      }
+
+      // If no id is passed, get all ID's to be muted.
+      var ids = self._getSoundIds(id);
+
+      for (var i=0; i<ids.length; i++) {
+        // Get the sound.
+        var sound = self._soundById(ids[i]);
+
+        if (sound) {
+          sound._muted = muted;
+
+          // Cancel active fade and set the volume to the end value.
+          if (sound._interval) {
+            self._stopFade(sound._id);
+          }
+
+          if (self._webAudio && sound._node) {
+            sound._node.gain.setValueAtTime(muted ? 0 : sound._volume, Howler.ctx.currentTime);
+          } else if (sound._node) {
+            sound._node.muted = Howler._muted ? true : muted;
+          }
+
+          self._emit('mute', sound._id);
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Get/set the volume of this sound or of the Howl group. This method can optionally take 0, 1 or 2 arguments.
+     *   volume() -> Returns the group's volume value.
+     *   volume(id) -> Returns the sound id's current volume.
+     *   volume(vol) -> Sets the volume of all sounds in this Howl group.
+     *   volume(vol, id) -> Sets the volume of passed sound id.
+     * @return {Howl/Number} Returns self or current volume.
+     */
+    volume: function() {
+      var self = this;
+      var args = arguments;
+      var vol, id;
+
+      // Determine the values based on arguments.
+      if (args.length === 0) {
+        // Return the value of the groups' volume.
+        return self._volume;
+      } else if (args.length === 1 || args.length === 2 && typeof args[1] === 'undefined') {
+        // First check if this is an ID, and if not, assume it is a new volume.
+        var ids = self._getSoundIds();
+        var index = ids.indexOf(args[0]);
+        if (index >= 0) {
+          id = parseInt(args[0], 10);
+        } else {
+          vol = parseFloat(args[0]);
+        }
+      } else if (args.length >= 2) {
+        vol = parseFloat(args[0]);
+        id = parseInt(args[1], 10);
+      }
+
+      // Update the volume or return the current volume.
+      var sound;
+      if (typeof vol !== 'undefined' && vol >= 0 && vol <= 1) {
+        // If the sound hasn't loaded, add it to the load queue to change volume when capable.
+        if (self._state !== 'loaded'|| self._playLock) {
+          self._queue.push({
+            event: 'volume',
+            action: function() {
+              self.volume.apply(self, args);
+            }
+          });
+
+          return self;
+        }
+
+        // Set the group volume.
+        if (typeof id === 'undefined') {
+          self._volume = vol;
+        }
+
+        // Update one or all volumes.
+        id = self._getSoundIds(id);
+        for (var i=0; i<id.length; i++) {
+          // Get the sound.
+          sound = self._soundById(id[i]);
+
+          if (sound) {
+            sound._volume = vol;
+
+            // Stop currently running fades.
+            if (!args[2]) {
+              self._stopFade(id[i]);
+            }
+
+            if (self._webAudio && sound._node && !sound._muted) {
+              sound._node.gain.setValueAtTime(vol, Howler.ctx.currentTime);
+            } else if (sound._node && !sound._muted) {
+              sound._node.volume = vol * Howler.volume();
+            }
+
+            self._emit('volume', sound._id);
+          }
+        }
+      } else {
+        sound = id ? self._soundById(id) : self._sounds[0];
+        return sound ? sound._volume : 0;
+      }
+
+      return self;
+    },
+
+    /**
+     * Fade a currently playing sound between two volumes (if no id is passsed, all sounds will fade).
+     * @param  {Number} from The value to fade from (0.0 to 1.0).
+     * @param  {Number} to   The volume to fade to (0.0 to 1.0).
+     * @param  {Number} len  Time in milliseconds to fade.
+     * @param  {Number} id   The sound id (omit to fade all sounds).
+     * @return {Howl}
+     */
+    fade: function(from, to, len, id) {
+      var self = this;
+
+      // If the sound hasn't loaded, add it to the load queue to fade when capable.
+      if (self._state !== 'loaded' || self._playLock) {
+        self._queue.push({
+          event: 'fade',
+          action: function() {
+            self.fade(from, to, len, id);
+          }
+        });
+
+        return self;
+      }
+
+      // Set the volume to the start position.
+      self.volume(from, id);
+
+      // Fade the volume of one or all sounds.
+      var ids = self._getSoundIds(id);
+      for (var i=0; i<ids.length; i++) {
+        // Get the sound.
+        var sound = self._soundById(ids[i]);
+
+        // Create a linear fade or fall back to timeouts with HTML5 Audio.
+        if (sound) {
+          // Stop the previous fade if no sprite is being used (otherwise, volume handles this).
+          if (!id) {
+            self._stopFade(ids[i]);
+          }
+
+          // If we are using Web Audio, let the native methods do the actual fade.
+          if (self._webAudio && !sound._muted) {
+            var currentTime = Howler.ctx.currentTime;
+            var end = currentTime + (len / 1000);
+            sound._volume = from;
+            sound._node.gain.setValueAtTime(from, currentTime);
+            sound._node.gain.linearRampToValueAtTime(to, end);
+          }
+
+          self._startFadeInterval(sound, from, to, len, ids[i], typeof id === 'undefined');
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Starts the internal interval to fade a sound.
+     * @param  {Object} sound Reference to sound to fade.
+     * @param  {Number} from The value to fade from (0.0 to 1.0).
+     * @param  {Number} to   The volume to fade to (0.0 to 1.0).
+     * @param  {Number} len  Time in milliseconds to fade.
+     * @param  {Number} id   The sound id to fade.
+     * @param  {Boolean} isGroup   If true, set the volume on the group.
+     */
+    _startFadeInterval: function(sound, from, to, len, id, isGroup) {
+      var self = this;
+      var vol = from;
+      var diff = to - from;
+      var steps = Math.abs(diff / 0.01);
+      var stepLen = Math.max(4, (steps > 0) ? len / steps : len);
+      var lastTick = Date.now();
+
+      // Store the value being faded to.
+      sound._fadeTo = to;
+
+      // Update the volume value on each interval tick.
+      sound._interval = setInterval(function() {
+        // Update the volume based on the time since the last tick.
+        var tick = (Date.now() - lastTick) / len;
+        lastTick = Date.now();
+        vol += diff * tick;
+
+        // Make sure the volume is in the right bounds.
+        vol = Math.max(0, vol);
+        vol = Math.min(1, vol);
+
+        // Round to within 2 decimal points.
+        vol = Math.round(vol * 100) / 100;
+
+        // Change the volume.
+        if (self._webAudio) {
+          sound._volume = vol;
+        } else {
+          self.volume(vol, sound._id, true);
+        }
+
+        // Set the group's volume.
+        if (isGroup) {
+          self._volume = vol;
+        }
+
+        // When the fade is complete, stop it and fire event.
+        if ((to < from && vol <= to) || (to > from && vol >= to)) {
+          clearInterval(sound._interval);
+          sound._interval = null;
+          sound._fadeTo = null;
+          self.volume(to, sound._id);
+          self._emit('fade', sound._id);
+        }
+      }, stepLen);
+    },
+
+    /**
+     * Internal method that stops the currently playing fade when
+     * a new fade starts, volume is changed or the sound is stopped.
+     * @param  {Number} id The sound id.
+     * @return {Howl}
+     */
+    _stopFade: function(id) {
+      var self = this;
+      var sound = self._soundById(id);
+
+      if (sound && sound._interval) {
+        if (self._webAudio) {
+          sound._node.gain.cancelScheduledValues(Howler.ctx.currentTime);
+        }
+
+        clearInterval(sound._interval);
+        sound._interval = null;
+        self.volume(sound._fadeTo, id);
+        sound._fadeTo = null;
+        self._emit('fade', id);
+      }
+
+      return self;
+    },
+
+    /**
+     * Get/set the loop parameter on a sound. This method can optionally take 0, 1 or 2 arguments.
+     *   loop() -> Returns the group's loop value.
+     *   loop(id) -> Returns the sound id's loop value.
+     *   loop(loop) -> Sets the loop value for all sounds in this Howl group.
+     *   loop(loop, id) -> Sets the loop value of passed sound id.
+     * @return {Howl/Boolean} Returns self or current loop value.
+     */
+    loop: function() {
+      var self = this;
+      var args = arguments;
+      var loop, id, sound;
+
+      // Determine the values for loop and id.
+      if (args.length === 0) {
+        // Return the grou's loop value.
+        return self._loop;
+      } else if (args.length === 1) {
+        if (typeof args[0] === 'boolean') {
+          loop = args[0];
+          self._loop = loop;
+        } else {
+          // Return this sound's loop value.
+          sound = self._soundById(parseInt(args[0], 10));
+          return sound ? sound._loop : false;
+        }
+      } else if (args.length === 2) {
+        loop = args[0];
+        id = parseInt(args[1], 10);
+      }
+
+      // If no id is passed, get all ID's to be looped.
+      var ids = self._getSoundIds(id);
+      for (var i=0; i<ids.length; i++) {
+        sound = self._soundById(ids[i]);
+
+        if (sound) {
+          sound._loop = loop;
+          if (self._webAudio && sound._node && sound._node.bufferSource) {
+            sound._node.bufferSource.loop = loop;
+            if (loop) {
+              sound._node.bufferSource.loopStart = sound._start || 0;
+              sound._node.bufferSource.loopEnd = sound._stop;
+            }
+          }
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Get/set the playback rate of a sound. This method can optionally take 0, 1 or 2 arguments.
+     *   rate() -> Returns the first sound node's current playback rate.
+     *   rate(id) -> Returns the sound id's current playback rate.
+     *   rate(rate) -> Sets the playback rate of all sounds in this Howl group.
+     *   rate(rate, id) -> Sets the playback rate of passed sound id.
+     * @return {Howl/Number} Returns self or the current playback rate.
+     */
+    rate: function() {
+      var self = this;
+      var args = arguments;
+      var rate, id;
+
+      // Determine the values based on arguments.
+      if (args.length === 0) {
+        // We will simply return the current rate of the first node.
+        id = self._sounds[0]._id;
+      } else if (args.length === 1) {
+        // First check if this is an ID, and if not, assume it is a new rate value.
+        var ids = self._getSoundIds();
+        var index = ids.indexOf(args[0]);
+        if (index >= 0) {
+          id = parseInt(args[0], 10);
+        } else {
+          rate = parseFloat(args[0]);
+        }
+      } else if (args.length === 2) {
+        rate = parseFloat(args[0]);
+        id = parseInt(args[1], 10);
+      }
+
+      // Update the playback rate or return the current value.
+      var sound;
+      if (typeof rate === 'number') {
+        // If the sound hasn't loaded, add it to the load queue to change playback rate when capable.
+        if (self._state !== 'loaded' || self._playLock) {
+          self._queue.push({
+            event: 'rate',
+            action: function() {
+              self.rate.apply(self, args);
+            }
+          });
+
+          return self;
+        }
+
+        // Set the group rate.
+        if (typeof id === 'undefined') {
+          self._rate = rate;
+        }
+
+        // Update one or all volumes.
+        id = self._getSoundIds(id);
+        for (var i=0; i<id.length; i++) {
+          // Get the sound.
+          sound = self._soundById(id[i]);
+
+          if (sound) {
+            // Keep track of our position when the rate changed and update the playback
+            // start position so we can properly adjust the seek position for time elapsed.
+            sound._rateSeek = self.seek(id[i]);
+            sound._playStart = self._webAudio ? Howler.ctx.currentTime : sound._playStart;
+            sound._rate = rate;
+
+            // Change the playback rate.
+            if (self._webAudio && sound._node && sound._node.bufferSource) {
+              sound._node.bufferSource.playbackRate.setValueAtTime(rate, Howler.ctx.currentTime);
+            } else if (sound._node) {
+              sound._node.playbackRate = rate;
+            }
+
+            // Reset the timers.
+            var seek = self.seek(id[i]);
+            var duration = ((self._sprite[sound._sprite][0] + self._sprite[sound._sprite][1]) / 1000) - seek;
+            var timeout = (duration * 1000) / Math.abs(sound._rate);
+
+            // Start a new end timer if sound is already playing.
+            if (self._endTimers[id[i]] || !sound._paused) {
+              self._clearTimer(id[i]);
+              self._endTimers[id[i]] = setTimeout(self._ended.bind(self, sound), timeout);
+            }
+
+            self._emit('rate', sound._id);
+          }
+        }
+      } else {
+        sound = self._soundById(id);
+        return sound ? sound._rate : self._rate;
+      }
+
+      return self;
+    },
+
+    /**
+     * Get/set the seek position of a sound. This method can optionally take 0, 1 or 2 arguments.
+     *   seek() -> Returns the first sound node's current seek position.
+     *   seek(id) -> Returns the sound id's current seek position.
+     *   seek(seek) -> Sets the seek position of the first sound node.
+     *   seek(seek, id) -> Sets the seek position of passed sound id.
+     * @return {Howl/Number} Returns self or the current seek position.
+     */
+    seek: function() {
+      var self = this;
+      var args = arguments;
+      var seek, id;
+
+      // Determine the values based on arguments.
+      if (args.length === 0) {
+        // We will simply return the current position of the first node.
+        id = self._sounds[0]._id;
+      } else if (args.length === 1) {
+        // First check if this is an ID, and if not, assume it is a new seek position.
+        var ids = self._getSoundIds();
+        var index = ids.indexOf(args[0]);
+        if (index >= 0) {
+          id = parseInt(args[0], 10);
+        } else if (self._sounds.length) {
+          id = self._sounds[0]._id;
+          seek = parseFloat(args[0]);
+        }
+      } else if (args.length === 2) {
+        seek = parseFloat(args[0]);
+        id = parseInt(args[1], 10);
+      }
+
+      // If there is no ID, bail out.
+      if (typeof id === 'undefined') {
+        return self;
+      }
+
+      // If the sound hasn't loaded, add it to the load queue to seek when capable.
+      if (self._state !== 'loaded' || self._playLock) {
+        self._queue.push({
+          event: 'seek',
+          action: function() {
+            self.seek.apply(self, args);
+          }
+        });
+
+        return self;
+      }
+
+      // Get the sound.
+      var sound = self._soundById(id);
+
+      if (sound) {
+        if (typeof seek === 'number' && seek >= 0) {
+          // Pause the sound and update position for restarting playback.
+          var playing = self.playing(id);
+          if (playing) {
+            self.pause(id, true);
+          }
+
+          // Move the position of the track and cancel timer.
+          sound._seek = seek;
+          sound._ended = false;
+          self._clearTimer(id);
+
+          // Update the seek position for HTML5 Audio.
+          if (!self._webAudio && sound._node) {
+            sound._node.currentTime = seek;
+          }
+
+          // Seek and emit when ready.
+          var seekAndEmit = function() {
+            self._emit('seek', id);
+
+            // Restart the playback if the sound was playing.
+            if (playing) {
+              self.play(id, true);
+            }
+          };
+
+          // Wait for the play lock to be unset before emitting (HTML5 Audio).
+          if (playing && !self._webAudio) {
+            var emitSeek = function() {
+              if (!self._playLock) {
+                seekAndEmit();
+              } else {
+                setTimeout(emitSeek, 0);
+              }
+            };
+            setTimeout(emitSeek, 0);
+          } else {
+            seekAndEmit();
+          }
+        } else {
+          if (self._webAudio) {
+            var realTime = self.playing(id) ? Howler.ctx.currentTime - sound._playStart : 0;
+            var rateSeek = sound._rateSeek ? sound._rateSeek - sound._seek : 0;
+            return sound._seek + (rateSeek + realTime * Math.abs(sound._rate));
+          } else {
+            return sound._node.currentTime;
+          }
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Check if a specific sound is currently playing or not (if id is provided), or check if at least one of the sounds in the group is playing or not.
+     * @param  {Number}  id The sound id to check. If none is passed, the whole sound group is checked.
+     * @return {Boolean} True if playing and false if not.
+     */
+    playing: function(id) {
+      var self = this;
+
+      // Check the passed sound ID (if any).
+      if (typeof id === 'number') {
+        var sound = self._soundById(id);
+        return sound ? !sound._paused : false;
+      }
+
+      // Otherwise, loop through all sounds and check if any are playing.
+      for (var i=0; i<self._sounds.length; i++) {
+        if (!self._sounds[i]._paused) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+
+    /**
+     * Get the duration of this sound. Passing a sound id will return the sprite duration.
+     * @param  {Number} id The sound id to check. If none is passed, return full source duration.
+     * @return {Number} Audio duration in seconds.
+     */
+    duration: function(id) {
+      var self = this;
+      var duration = self._duration;
+
+      // If we pass an ID, get the sound and return the sprite length.
+      var sound = self._soundById(id);
+      if (sound) {
+        duration = self._sprite[sound._sprite][1] / 1000;
+      }
+
+      return duration;
+    },
+
+    /**
+     * Returns the current loaded state of this Howl.
+     * @return {String} 'unloaded', 'loading', 'loaded'
+     */
+    state: function() {
+      return this._state;
+    },
+
+    /**
+     * Unload and destroy the current Howl object.
+     * This will immediately stop all sound instances attached to this group.
+     */
+    unload: function() {
+      var self = this;
+
+      // Stop playing any active sounds.
+      var sounds = self._sounds;
+      for (var i=0; i<sounds.length; i++) {
+        // Stop the sound if it is currently playing.
+        if (!sounds[i]._paused) {
+          self.stop(sounds[i]._id);
+        }
+
+        // Remove the source or disconnect.
+        if (!self._webAudio) {
+          // Set the source to 0-second silence to stop any downloading (except in IE).
+          var checkIE = /MSIE |Trident\//.test(Howler._navigator && Howler._navigator.userAgent);
+          if (!checkIE) {
+            sounds[i]._node.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+          }
+
+          // Remove any event listeners.
+          sounds[i]._node.removeEventListener('error', sounds[i]._errorFn, false);
+          sounds[i]._node.removeEventListener(Howler._canPlayEvent, sounds[i]._loadFn, false);
+        }
+
+        // Empty out all of the nodes.
+        delete sounds[i]._node;
+
+        // Make sure all timers are cleared out.
+        self._clearTimer(sounds[i]._id);
+      }
+
+      // Remove the references in the global Howler object.
+      var index = Howler._howls.indexOf(self);
+      if (index >= 0) {
+        Howler._howls.splice(index, 1);
+      }
+
+      // Delete this sound from the cache (if no other Howl is using it).
+      var remCache = true;
+      for (i=0; i<Howler._howls.length; i++) {
+        if (Howler._howls[i]._src === self._src) {
+          remCache = false;
+          break;
+        }
+      }
+
+      if (cache && remCache) {
+        delete cache[self._src];
+      }
+
+      // Clear global errors.
+      Howler.noAudio = false;
+
+      // Clear out `self`.
+      self._state = 'unloaded';
+      self._sounds = [];
+      self = null;
+
+      return null;
+    },
+
+    /**
+     * Listen to a custom event.
+     * @param  {String}   event Event name.
+     * @param  {Function} fn    Listener to call.
+     * @param  {Number}   id    (optional) Only listen to events for this sound.
+     * @param  {Number}   once  (INTERNAL) Marks event to fire only once.
+     * @return {Howl}
+     */
+    on: function(event, fn, id, once) {
+      var self = this;
+      var events = self['_on' + event];
+
+      if (typeof fn === 'function') {
+        events.push(once ? {id: id, fn: fn, once: once} : {id: id, fn: fn});
+      }
+
+      return self;
+    },
+
+    /**
+     * Remove a custom event. Call without parameters to remove all events.
+     * @param  {String}   event Event name.
+     * @param  {Function} fn    Listener to remove. Leave empty to remove all.
+     * @param  {Number}   id    (optional) Only remove events for this sound.
+     * @return {Howl}
+     */
+    off: function(event, fn, id) {
+      var self = this;
+      var events = self['_on' + event];
+      var i = 0;
+
+      // Allow passing just an event and ID.
+      if (typeof fn === 'number') {
+        id = fn;
+        fn = null;
+      }
+
+      if (fn || id) {
+        // Loop through event store and remove the passed function.
+        for (i=0; i<events.length; i++) {
+          var isId = (id === events[i].id);
+          if (fn === events[i].fn && isId || !fn && isId) {
+            events.splice(i, 1);
+            break;
+          }
+        }
+      } else if (event) {
+        // Clear out all events of this type.
+        self['_on' + event] = [];
+      } else {
+        // Clear out all events of every type.
+        var keys = Object.keys(self);
+        for (i=0; i<keys.length; i++) {
+          if ((keys[i].indexOf('_on') === 0) && Array.isArray(self[keys[i]])) {
+            self[keys[i]] = [];
+          }
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Listen to a custom event and remove it once fired.
+     * @param  {String}   event Event name.
+     * @param  {Function} fn    Listener to call.
+     * @param  {Number}   id    (optional) Only listen to events for this sound.
+     * @return {Howl}
+     */
+    once: function(event, fn, id) {
+      var self = this;
+
+      // Setup the event listener.
+      self.on(event, fn, id, 1);
+
+      return self;
+    },
+
+    /**
+     * Emit all events of a specific type and pass the sound id.
+     * @param  {String} event Event name.
+     * @param  {Number} id    Sound ID.
+     * @param  {Number} msg   Message to go with event.
+     * @return {Howl}
+     */
+    _emit: function(event, id, msg) {
+      var self = this;
+      var events = self['_on' + event];
+
+      // Loop through event store and fire all functions.
+      for (var i=events.length-1; i>=0; i--) {
+        // Only fire the listener if the correct ID is used.
+        if (!events[i].id || events[i].id === id || event === 'load') {
+          setTimeout(function(fn) {
+            fn.call(this, id, msg);
+          }.bind(self, events[i].fn), 0);
+
+          // If this event was setup with `once`, remove it.
+          if (events[i].once) {
+            self.off(event, events[i].fn, events[i].id);
+          }
+        }
+      }
+
+      // Pass the event type into load queue so that it can continue stepping.
+      self._loadQueue(event);
+
+      return self;
+    },
+
+    /**
+     * Queue of actions initiated before the sound has loaded.
+     * These will be called in sequence, with the next only firing
+     * after the previous has finished executing (even if async like play).
+     * @return {Howl}
+     */
+    _loadQueue: function(event) {
+      var self = this;
+
+      if (self._queue.length > 0) {
+        var task = self._queue[0];
+
+        // Remove this task if a matching event was passed.
+        if (task.event === event) {
+          self._queue.shift();
+          self._loadQueue();
+        }
+
+        // Run the task if no event type is passed.
+        if (!event) {
+          task.action();
+        }
+      }
+
+      return self;
+    },
+
+    /**
+     * Fired when playback ends at the end of the duration.
+     * @param  {Sound} sound The sound object to work with.
+     * @return {Howl}
+     */
+    _ended: function(sound) {
+      var self = this;
+      var sprite = sound._sprite;
+
+      // If we are using IE and there was network latency we may be clipping
+      // audio before it completes playing. Lets check the node to make sure it
+      // believes it has completed, before ending the playback.
+      if (!self._webAudio && sound._node && !sound._node.paused && !sound._node.ended && sound._node.currentTime < sound._stop) {
+        setTimeout(self._ended.bind(self, sound), 100);
+        return self;
+      }
+
+      // Should this sound loop?
+      var loop = !!(sound._loop || self._sprite[sprite][2]);
+
+      // Fire the ended event.
+      self._emit('end', sound._id);
+
+      // Restart the playback for HTML5 Audio loop.
+      if (!self._webAudio && loop) {
+        self.stop(sound._id, true).play(sound._id);
+      }
+
+      // Restart this timer if on a Web Audio loop.
+      if (self._webAudio && loop) {
+        self._emit('play', sound._id);
+        sound._seek = sound._start || 0;
+        sound._rateSeek = 0;
+        sound._playStart = Howler.ctx.currentTime;
+
+        var timeout = ((sound._stop - sound._start) * 1000) / Math.abs(sound._rate);
+        self._endTimers[sound._id] = setTimeout(self._ended.bind(self, sound), timeout);
+      }
+
+      // Mark the node as paused.
+      if (self._webAudio && !loop) {
+        sound._paused = true;
+        sound._ended = true;
+        sound._seek = sound._start || 0;
+        sound._rateSeek = 0;
+        self._clearTimer(sound._id);
+
+        // Clean up the buffer source.
+        self._cleanBuffer(sound._node);
+
+        // Attempt to auto-suspend AudioContext if no sounds are still playing.
+        Howler._autoSuspend();
+      }
+
+      // When using a sprite, end the track.
+      if (!self._webAudio && !loop) {
+        self.stop(sound._id, true);
+      }
+
+      return self;
+    },
+
+    /**
+     * Clear the end timer for a sound playback.
+     * @param  {Number} id The sound ID.
+     * @return {Howl}
+     */
+    _clearTimer: function(id) {
+      var self = this;
+
+      if (self._endTimers[id]) {
+        // Clear the timeout or remove the ended listener.
+        if (typeof self._endTimers[id] !== 'function') {
+          clearTimeout(self._endTimers[id]);
+        } else {
+          var sound = self._soundById(id);
+          if (sound && sound._node) {
+            sound._node.removeEventListener('ended', self._endTimers[id], false);
+          }
+        }
+
+        delete self._endTimers[id];
+      }
+
+      return self;
+    },
+
+    /**
+     * Return the sound identified by this ID, or return null.
+     * @param  {Number} id Sound ID
+     * @return {Object}    Sound object or null.
+     */
+    _soundById: function(id) {
+      var self = this;
+
+      // Loop through all sounds and find the one with this ID.
+      for (var i=0; i<self._sounds.length; i++) {
+        if (id === self._sounds[i]._id) {
+          return self._sounds[i];
+        }
+      }
+
+      return null;
+    },
+
+    /**
+     * Return an inactive sound from the pool or create a new one.
+     * @return {Sound} Sound playback object.
+     */
+    _inactiveSound: function() {
+      var self = this;
+
+      self._drain();
+
+      // Find the first inactive node to recycle.
+      for (var i=0; i<self._sounds.length; i++) {
+        if (self._sounds[i]._ended) {
+          return self._sounds[i].reset();
+        }
+      }
+
+      // If no inactive node was found, create a new one.
+      return new Sound(self);
+    },
+
+    /**
+     * Drain excess inactive sounds from the pool.
+     */
+    _drain: function() {
+      var self = this;
+      var limit = self._pool;
+      var cnt = 0;
+      var i = 0;
+
+      // If there are less sounds than the max pool size, we are done.
+      if (self._sounds.length < limit) {
+        return;
+      }
+
+      // Count the number of inactive sounds.
+      for (i=0; i<self._sounds.length; i++) {
+        if (self._sounds[i]._ended) {
+          cnt++;
+        }
+      }
+
+      // Remove excess inactive sounds, going in reverse order.
+      for (i=self._sounds.length - 1; i>=0; i--) {
+        if (cnt <= limit) {
+          return;
+        }
+
+        if (self._sounds[i]._ended) {
+          // Disconnect the audio source when using Web Audio.
+          if (self._webAudio && self._sounds[i]._node) {
+            self._sounds[i]._node.disconnect(0);
+          }
+
+          // Remove sounds until we have the pool size.
+          self._sounds.splice(i, 1);
+          cnt--;
+        }
+      }
+    },
+
+    /**
+     * Get all ID's from the sounds pool.
+     * @param  {Number} id Only return one ID if one is passed.
+     * @return {Array}    Array of IDs.
+     */
+    _getSoundIds: function(id) {
+      var self = this;
+
+      if (typeof id === 'undefined') {
+        var ids = [];
+        for (var i=0; i<self._sounds.length; i++) {
+          ids.push(self._sounds[i]._id);
+        }
+
+        return ids;
+      } else {
+        return [id];
+      }
+    },
+
+    /**
+     * Load the sound back into the buffer source.
+     * @param  {Sound} sound The sound object to work with.
+     * @return {Howl}
+     */
+    _refreshBuffer: function(sound) {
+      var self = this;
+
+      // Setup the buffer source for playback.
+      sound._node.bufferSource = Howler.ctx.createBufferSource();
+      sound._node.bufferSource.buffer = cache[self._src];
+
+      // Connect to the correct node.
+      if (sound._panner) {
+        sound._node.bufferSource.connect(sound._panner);
+      } else {
+        sound._node.bufferSource.connect(sound._node);
+      }
+
+      // Setup looping and playback rate.
+      sound._node.bufferSource.loop = sound._loop;
+      if (sound._loop) {
+        sound._node.bufferSource.loopStart = sound._start || 0;
+        sound._node.bufferSource.loopEnd = sound._stop || 0;
+      }
+      sound._node.bufferSource.playbackRate.setValueAtTime(sound._rate, Howler.ctx.currentTime);
+
+      return self;
+    },
+
+    /**
+     * Prevent memory leaks by cleaning up the buffer source after playback.
+     * @param  {Object} node Sound's audio node containing the buffer source.
+     * @return {Howl}
+     */
+    _cleanBuffer: function(node) {
+      var self = this;
+
+      if (Howler._scratchBuffer && node.bufferSource) {
+        node.bufferSource.onended = null;
+        node.bufferSource.disconnect(0);
+        try { node.bufferSource.buffer = Howler._scratchBuffer; } catch(e) {}
+      }
+      node.bufferSource = null;
+
+      return self;
+    }
+  };
+
+  /** Single Sound Methods **/
+  /***************************************************************************/
+
+  /**
+   * Setup the sound object, which each node attached to a Howl group is contained in.
+   * @param {Object} howl The Howl parent group.
+   */
+  var Sound = function(howl) {
+    this._parent = howl;
+    this.init();
+  };
+  Sound.prototype = {
+    /**
+     * Initialize a new Sound object.
+     * @return {Sound}
+     */
+    init: function() {
+      var self = this;
+      var parent = self._parent;
+
+      // Setup the default parameters.
+      self._muted = parent._muted;
+      self._loop = parent._loop;
+      self._volume = parent._volume;
+      self._rate = parent._rate;
+      self._seek = 0;
+      self._paused = true;
+      self._ended = true;
+      self._sprite = '__default';
+
+      // Generate a unique ID for this sound.
+      self._id = ++Howler._counter;
+
+      // Add itself to the parent's pool.
+      parent._sounds.push(self);
+
+      // Create the new node.
+      self.create();
+
+      return self;
+    },
+
+    /**
+     * Create and setup a new sound object, whether HTML5 Audio or Web Audio.
+     * @return {Sound}
+     */
+    create: function() {
+      var self = this;
+      var parent = self._parent;
+      var volume = (Howler._muted || self._muted || self._parent._muted) ? 0 : self._volume;
+
+      if (parent._webAudio) {
+        // Create the gain node for controlling volume (the source will connect to this).
+        self._node = (typeof Howler.ctx.createGain === 'undefined') ? Howler.ctx.createGainNode() : Howler.ctx.createGain();
+        self._node.gain.setValueAtTime(volume, Howler.ctx.currentTime);
+        self._node.paused = true;
+        self._node.connect(Howler.masterGain);
+      } else {
+        self._node = new Audio();
+
+        // Listen for errors (http://dev.w3.org/html5/spec-author-view/spec.html#mediaerror).
+        self._errorFn = self._errorListener.bind(self);
+        self._node.addEventListener('error', self._errorFn, false);
+
+        // Listen for 'canplaythrough' event to let us know the sound is ready.
+        self._loadFn = self._loadListener.bind(self);
+        self._node.addEventListener(Howler._canPlayEvent, self._loadFn, false);
+
+        // Setup the new audio node.
+        self._node.src = parent._src;
+        self._node.preload = 'auto';
+        self._node.volume = volume * Howler.volume();
+
+        // Begin loading the source.
+        self._node.load();
+      }
+
+      return self;
+    },
+
+    /**
+     * Reset the parameters of this sound to the original state (for recycle).
+     * @return {Sound}
+     */
+    reset: function() {
+      var self = this;
+      var parent = self._parent;
+
+      // Reset all of the parameters of this sound.
+      self._muted = parent._muted;
+      self._loop = parent._loop;
+      self._volume = parent._volume;
+      self._rate = parent._rate;
+      self._seek = 0;
+      self._rateSeek = 0;
+      self._paused = true;
+      self._ended = true;
+      self._sprite = '__default';
+
+      // Generate a new ID so that it isn't confused with the previous sound.
+      self._id = ++Howler._counter;
+
+      return self;
+    },
+
+    /**
+     * HTML5 Audio error listener callback.
+     */
+    _errorListener: function() {
+      var self = this;
+
+      // Fire an error event and pass back the code.
+      self._parent._emit('loaderror', self._id, self._node.error ? self._node.error.code : 0);
+
+      // Clear the event listener.
+      self._node.removeEventListener('error', self._errorFn, false);
+    },
+
+    /**
+     * HTML5 Audio canplaythrough listener callback.
+     */
+    _loadListener: function() {
+      var self = this;
+      var parent = self._parent;
+
+      // Round up the duration to account for the lower precision in HTML5 Audio.
+      parent._duration = Math.ceil(self._node.duration * 10) / 10;
+
+      // Setup a sprite if none is defined.
+      if (Object.keys(parent._sprite).length === 0) {
+        parent._sprite = {__default: [0, parent._duration * 1000]};
+      }
+
+      if (parent._state !== 'loaded') {
+        parent._state = 'loaded';
+        parent._emit('load');
+        parent._loadQueue();
+      }
+
+      // Clear the event listener.
+      self._node.removeEventListener(Howler._canPlayEvent, self._loadFn, false);
+    }
+  };
+
+  /** Helper Methods **/
+  /***************************************************************************/
+
+  var cache = {};
+
+  /**
+   * Buffer a sound from URL, Data URI or cache and decode to audio source (Web Audio API).
+   * @param  {Howl} self
+   */
+  var loadBuffer = function(self) {
+    var url = self._src;
+
+    // Check if the buffer has already been cached and use it instead.
+    if (cache[url]) {
+      // Set the duration from the cache.
+      self._duration = cache[url].duration;
+
+      // Load the sound into this Howl.
+      loadSound(self);
+
+      return;
+    }
+
+    if (/^data:[^;]+;base64,/.test(url)) {
+      // Decode the base64 data URI without XHR, since some browsers don't support it.
+      var data = atob(url.split(',')[1]);
+      var dataView = new Uint8Array(data.length);
+      for (var i=0; i<data.length; ++i) {
+        dataView[i] = data.charCodeAt(i);
+      }
+
+      decodeAudioData(dataView.buffer, self);
+    } else {
+      // Load the buffer from the URL.
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.withCredentials = self._xhrWithCredentials;
+      xhr.responseType = 'arraybuffer';
+      xhr.onload = function() {
+        // Make sure we get a successful response back.
+        var code = (xhr.status + '')[0];
+        if (code !== '0' && code !== '2' && code !== '3') {
+          self._emit('loaderror', null, 'Failed loading audio file with status: ' + xhr.status + '.');
+          return;
+        }
+
+        decodeAudioData(xhr.response, self);
+      };
+      xhr.onerror = function() {
+        // If there is an error, switch to HTML5 Audio.
+        if (self._webAudio) {
+          self._html5 = true;
+          self._webAudio = false;
+          self._sounds = [];
+          delete cache[url];
+          self.load();
+        }
+      };
+      safeXhrSend(xhr);
+    }
+  };
+
+  /**
+   * Send the XHR request wrapped in a try/catch.
+   * @param  {Object} xhr XHR to send.
+   */
+  var safeXhrSend = function(xhr) {
+    try {
+      xhr.send();
+    } catch (e) {
+      xhr.onerror();
+    }
+  };
+
+  /**
+   * Decode audio data from an array buffer.
+   * @param  {ArrayBuffer} arraybuffer The audio data.
+   * @param  {Howl}        self
+   */
+  var decodeAudioData = function(arraybuffer, self) {
+    // Fire a load error if something broke.
+    var error = function() {
+      self._emit('loaderror', null, 'Decoding audio data failed.');
+    };
+
+    // Load the sound on success.
+    var success = function(buffer) {
+      if (buffer && self._sounds.length > 0) {
+        cache[self._src] = buffer;
+        loadSound(self, buffer);
+      } else {
+        error();
+      }
+    };
+
+    // Decode the buffer into an audio source.
+    if (typeof Promise !== 'undefined' && Howler.ctx.decodeAudioData.length === 1) {
+      Howler.ctx.decodeAudioData(arraybuffer).then(success).catch(error);
+    } else {
+      Howler.ctx.decodeAudioData(arraybuffer, success, error);
+    }
+  }
+
+  /**
+   * Sound is now loaded, so finish setting everything up and fire the loaded event.
+   * @param  {Howl} self
+   * @param  {Object} buffer The decoded buffer sound source.
+   */
+  var loadSound = function(self, buffer) {
+    // Set the duration.
+    if (buffer && !self._duration) {
+      self._duration = buffer.duration;
+    }
+
+    // Setup a sprite if none is defined.
+    if (Object.keys(self._sprite).length === 0) {
+      self._sprite = {__default: [0, self._duration * 1000]};
+    }
+
+    // Fire the loaded event.
+    if (self._state !== 'loaded') {
+      self._state = 'loaded';
+      self._emit('load');
+      self._loadQueue();
+    }
+  };
+
+  /**
+   * Setup the audio context when available, or switch to HTML5 Audio mode.
+   */
+  var setupAudioContext = function() {
+    // Check if we are using Web Audio and setup the AudioContext if we are.
+    try {
+      if (typeof AudioContext !== 'undefined') {
+        Howler.ctx = new AudioContext();
+      } else if (typeof webkitAudioContext !== 'undefined') {
+        Howler.ctx = new webkitAudioContext();
+      } else {
+        Howler.usingWebAudio = false;
+      }
+    } catch(e) {
+      Howler.usingWebAudio = false;
+    }
+
+    // Check if a webview is being used on iOS8 or earlier (rather than the browser).
+    // If it is, disable Web Audio as it causes crashing.
+    var iOS = (/iP(hone|od|ad)/.test(Howler._navigator && Howler._navigator.platform));
+    var appVersion = Howler._navigator && Howler._navigator.appVersion.match(/OS (\d+)_(\d+)_?(\d+)?/);
+    var version = appVersion ? parseInt(appVersion[1], 10) : null;
+    if (iOS && version && version < 9) {
+      var safari = /safari/.test(Howler._navigator && Howler._navigator.userAgent.toLowerCase());
+      if (Howler._navigator && Howler._navigator.standalone && !safari || Howler._navigator && !Howler._navigator.standalone && !safari) {
+        Howler.usingWebAudio = false;
+      }
+    }
+
+    // Create and expose the master GainNode when using Web Audio (useful for plugins or advanced usage).
+    if (Howler.usingWebAudio) {
+      Howler.masterGain = (typeof Howler.ctx.createGain === 'undefined') ? Howler.ctx.createGainNode() : Howler.ctx.createGain();
+      Howler.masterGain.gain.setValueAtTime(Howler._muted ? 0 : 1, Howler.ctx.currentTime);
+      Howler.masterGain.connect(Howler.ctx.destination);
+    }
+
+    // Re-run the setup on Howler.
+    Howler._setup();
+  };
+
+  // Add support for AMD (Asynchronous Module Definition) libraries such as require.js.
+  if (typeof define === 'function' && define.amd) {
+    define([], function() {
+      return {
+        Howler: Howler,
+        Howl: Howl
+      };
+    });
+  }
+
+  // Add support for CommonJS libraries such as browserify.
+  if (typeof exports !== 'undefined') {
+    exports.Howler = Howler;
+    exports.Howl = Howl;
+  }
+
+  // Define globally in case AMD is not available or unused.
+  if (typeof window !== 'undefined') {
+    window.HowlerGlobal = HowlerGlobal;
+    window.Howler = Howler;
+    window.Howl = Howl;
+    window.Sound = Sound;
+  } else if (typeof global !== 'undefined') { // Add to global in Node.js (for testing, etc).
+    global.HowlerGlobal = HowlerGlobal;
+    global.Howler = Howler;
+    global.Howl = Howl;
+    global.Sound = Sound;
+  }
+})();
+
+
+/*!
+ *  Spatial Plugin - Adds support for stereo and 3D audio where Web Audio is supported.
+ *  
+ *  howler.js v2.0.15
+ *  howlerjs.com
+ *
+ *  (c) 2013-2018, James Simpson of GoldFire Studios
+ *  goldfirestudios.com
+ *
+ *  MIT License
+ */
+
+(function() {
+
+  'use strict';
+
+  // Setup default properties.
+  HowlerGlobal.prototype._pos = [0, 0, 0];
+  HowlerGlobal.prototype._orientation = [0, 0, -1, 0, 1, 0];
+
+  /** Global Methods **/
+  /***************************************************************************/
+
+  /**
+   * Helper method to update the stereo panning position of all current Howls.
+   * Future Howls will not use this value unless explicitly set.
+   * @param  {Number} pan A value of -1.0 is all the way left and 1.0 is all the way right.
+   * @return {Howler/Number}     Self or current stereo panning value.
+   */
+  HowlerGlobal.prototype.stereo = function(pan) {
+    var self = this;
+
+    // Stop right here if not using Web Audio.
+    if (!self.ctx || !self.ctx.listener) {
+      return self;
+    }
+
+    // Loop through all Howls and update their stereo panning.
+    for (var i=self._howls.length-1; i>=0; i--) {
+      self._howls[i].stereo(pan);
+    }
+
+    return self;
+  };
+
+  /**
+   * Get/set the position of the listener in 3D cartesian space. Sounds using
+   * 3D position will be relative to the listener's position.
+   * @param  {Number} x The x-position of the listener.
+   * @param  {Number} y The y-position of the listener.
+   * @param  {Number} z The z-position of the listener.
+   * @return {Howler/Array}   Self or current listener position.
+   */
+  HowlerGlobal.prototype.pos = function(x, y, z) {
+    var self = this;
+
+    // Stop right here if not using Web Audio.
+    if (!self.ctx || !self.ctx.listener) {
+      return self;
+    }
+
+    // Set the defaults for optional 'y' & 'z'.
+    y = (typeof y !== 'number') ? self._pos[1] : y;
+    z = (typeof z !== 'number') ? self._pos[2] : z;
+
+    if (typeof x === 'number') {
+      self._pos = [x, y, z];
+
+      if (typeof self.ctx.listener.positionX !== 'undefined') {
+        self.ctx.listener.positionX.setTargetAtTime(self._pos[0], Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.positionY.setTargetAtTime(self._pos[1], Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.positionZ.setTargetAtTime(self._pos[2], Howler.ctx.currentTime, 0.1);
+      } else {
+        self.ctx.listener.setPosition(self._pos[0], self._pos[1], self._pos[2]);
+      }
+    } else {
+      return self._pos;
+    }
+
+    return self;
+  };
+
+  /**
+   * Get/set the direction the listener is pointing in the 3D cartesian space.
+   * A front and up vector must be provided. The front is the direction the
+   * face of the listener is pointing, and up is the direction the top of the
+   * listener is pointing. Thus, these values are expected to be at right angles
+   * from each other.
+   * @param  {Number} x   The x-orientation of the listener.
+   * @param  {Number} y   The y-orientation of the listener.
+   * @param  {Number} z   The z-orientation of the listener.
+   * @param  {Number} xUp The x-orientation of the top of the listener.
+   * @param  {Number} yUp The y-orientation of the top of the listener.
+   * @param  {Number} zUp The z-orientation of the top of the listener.
+   * @return {Howler/Array}     Returns self or the current orientation vectors.
+   */
+  HowlerGlobal.prototype.orientation = function(x, y, z, xUp, yUp, zUp) {
+    var self = this;
+
+    // Stop right here if not using Web Audio.
+    if (!self.ctx || !self.ctx.listener) {
+      return self;
+    }
+
+    // Set the defaults for optional 'y' & 'z'.
+    var or = self._orientation;
+    y = (typeof y !== 'number') ? or[1] : y;
+    z = (typeof z !== 'number') ? or[2] : z;
+    xUp = (typeof xUp !== 'number') ? or[3] : xUp;
+    yUp = (typeof yUp !== 'number') ? or[4] : yUp;
+    zUp = (typeof zUp !== 'number') ? or[5] : zUp;
+
+    if (typeof x === 'number') {
+      self._orientation = [x, y, z, xUp, yUp, zUp];
+
+      if (typeof self.ctx.listener.forwardX !== 'undefined') {
+        self.ctx.listener.forwardX.setTargetAtTime(x, Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.forwardY.setTargetAtTime(y, Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.forwardZ.setTargetAtTime(z, Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.upX.setTargetAtTime(x, Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.upY.setTargetAtTime(y, Howler.ctx.currentTime, 0.1);
+        self.ctx.listener.upZ.setTargetAtTime(z, Howler.ctx.currentTime, 0.1);
+      } else {
+        self.ctx.listener.setOrientation(x, y, z, xUp, yUp, zUp);
+      }
+    } else {
+      return or;
+    }
+
+    return self;
+  };
+
+  /** Group Methods **/
+  /***************************************************************************/
+
+  /**
+   * Add new properties to the core init.
+   * @param  {Function} _super Core init method.
+   * @return {Howl}
+   */
+  Howl.prototype.init = (function(_super) {
+    return function(o) {
+      var self = this;
+
+      // Setup user-defined default properties.
+      self._orientation = o.orientation || [1, 0, 0];
+      self._stereo = o.stereo || null;
+      self._pos = o.pos || null;
+      self._pannerAttr = {
+        coneInnerAngle: typeof o.coneInnerAngle !== 'undefined' ? o.coneInnerAngle : 360,
+        coneOuterAngle: typeof o.coneOuterAngle !== 'undefined' ? o.coneOuterAngle : 360,
+        coneOuterGain: typeof o.coneOuterGain !== 'undefined' ? o.coneOuterGain : 0,
+        distanceModel: typeof o.distanceModel !== 'undefined' ? o.distanceModel : 'inverse',
+        maxDistance: typeof o.maxDistance !== 'undefined' ? o.maxDistance : 10000,
+        panningModel: typeof o.panningModel !== 'undefined' ? o.panningModel : 'HRTF',
+        refDistance: typeof o.refDistance !== 'undefined' ? o.refDistance : 1,
+        rolloffFactor: typeof o.rolloffFactor !== 'undefined' ? o.rolloffFactor : 1
+      };
+
+      // Setup event listeners.
+      self._onstereo = o.onstereo ? [{fn: o.onstereo}] : [];
+      self._onpos = o.onpos ? [{fn: o.onpos}] : [];
+      self._onorientation = o.onorientation ? [{fn: o.onorientation}] : [];
+
+      // Complete initilization with howler.js core's init function.
+      return _super.call(this, o);
+    };
+  })(Howl.prototype.init);
+
+  /**
+   * Get/set the stereo panning of the audio source for this sound or all in the group.
+   * @param  {Number} pan  A value of -1.0 is all the way left and 1.0 is all the way right.
+   * @param  {Number} id (optional) The sound ID. If none is passed, all in group will be updated.
+   * @return {Howl/Number}    Returns self or the current stereo panning value.
+   */
+  Howl.prototype.stereo = function(pan, id) {
+    var self = this;
+
+    // Stop right here if not using Web Audio.
+    if (!self._webAudio) {
+      return self;
+    }
+
+    // If the sound hasn't loaded, add it to the load queue to change stereo pan when capable.
+    if (self._state !== 'loaded') {
+      self._queue.push({
+        event: 'stereo',
+        action: function() {
+          self.stereo(pan, id);
+        }
+      });
+
+      return self;
+    }
+
+    // Check for PannerStereoNode support and fallback to PannerNode if it doesn't exist.
+    var pannerType = (typeof Howler.ctx.createStereoPanner === 'undefined') ? 'spatial' : 'stereo';
+
+    // Setup the group's stereo panning if no ID is passed.
+    if (typeof id === 'undefined') {
+      // Return the group's stereo panning if no parameters are passed.
+      if (typeof pan === 'number') {
+        self._stereo = pan;
+        self._pos = [pan, 0, 0];
+      } else {
+        return self._stereo;
+      }
+    }
+
+    // Change the streo panning of one or all sounds in group.
+    var ids = self._getSoundIds(id);
+    for (var i=0; i<ids.length; i++) {
+      // Get the sound.
+      var sound = self._soundById(ids[i]);
+
+      if (sound) {
+        if (typeof pan === 'number') {
+          sound._stereo = pan;
+          sound._pos = [pan, 0, 0];
+
+          if (sound._node) {
+            // If we are falling back, make sure the panningModel is equalpower.
+            sound._pannerAttr.panningModel = 'equalpower';
+
+            // Check if there is a panner setup and create a new one if not.
+            if (!sound._panner || !sound._panner.pan) {
+              setupPanner(sound, pannerType);
+            }
+
+            if (pannerType === 'spatial') {
+              if (typeof sound._panner.positionX !== 'undefined') {
+                sound._panner.positionX.setValueAtTime(pan, Howler.ctx.currentTime);
+                sound._panner.positionY.setValueAtTime(0, Howler.ctx.currentTime);
+                sound._panner.positionZ.setValueAtTime(0, Howler.ctx.currentTime);
+              } else {
+                sound._panner.setPosition(pan, 0, 0);
+              }
+            } else {
+              sound._panner.pan.setValueAtTime(pan, Howler.ctx.currentTime);
+            }
+          }
+
+          self._emit('stereo', sound._id);
+        } else {
+          return sound._stereo;
+        }
+      }
+    }
+
+    return self;
+  };
+
+  /**
+   * Get/set the 3D spatial position of the audio source for this sound or group relative to the global listener.
+   * @param  {Number} x  The x-position of the audio source.
+   * @param  {Number} y  The y-position of the audio source.
+   * @param  {Number} z  The z-position of the audio source.
+   * @param  {Number} id (optional) The sound ID. If none is passed, all in group will be updated.
+   * @return {Howl/Array}    Returns self or the current 3D spatial position: [x, y, z].
+   */
+  Howl.prototype.pos = function(x, y, z, id) {
+    var self = this;
+
+    // Stop right here if not using Web Audio.
+    if (!self._webAudio) {
+      return self;
+    }
+
+    // If the sound hasn't loaded, add it to the load queue to change position when capable.
+    if (self._state !== 'loaded') {
+      self._queue.push({
+        event: 'pos',
+        action: function() {
+          self.pos(x, y, z, id);
+        }
+      });
+
+      return self;
+    }
+
+    // Set the defaults for optional 'y' & 'z'.
+    y = (typeof y !== 'number') ? 0 : y;
+    z = (typeof z !== 'number') ? -0.5 : z;
+
+    // Setup the group's spatial position if no ID is passed.
+    if (typeof id === 'undefined') {
+      // Return the group's spatial position if no parameters are passed.
+      if (typeof x === 'number') {
+        self._pos = [x, y, z];
+      } else {
+        return self._pos;
+      }
+    }
+
+    // Change the spatial position of one or all sounds in group.
+    var ids = self._getSoundIds(id);
+    for (var i=0; i<ids.length; i++) {
+      // Get the sound.
+      var sound = self._soundById(ids[i]);
+
+      if (sound) {
+        if (typeof x === 'number') {
+          sound._pos = [x, y, z];
+
+          if (sound._node) {
+            // Check if there is a panner setup and create a new one if not.
+            if (!sound._panner || sound._panner.pan) {
+              setupPanner(sound, 'spatial');
+            }
+
+            if (typeof sound._panner.positionX !== 'undefined') {
+              sound._panner.positionX.setValueAtTime(x, Howler.ctx.currentTime);
+              sound._panner.positionY.setValueAtTime(y, Howler.ctx.currentTime);
+              sound._panner.positionZ.setValueAtTime(z, Howler.ctx.currentTime);
+            } else {
+              sound._panner.setOrientation(x, y, z);
+            }
+          }
+
+          self._emit('pos', sound._id);
+        } else {
+          return sound._pos;
+        }
+      }
+    }
+
+    return self;
+  };
+
+  /**
+   * Get/set the direction the audio source is pointing in the 3D cartesian coordinate
+   * space. Depending on how direction the sound is, based on the `cone` attributes,
+   * a sound pointing away from the listener can be quiet or silent.
+   * @param  {Number} x  The x-orientation of the source.
+   * @param  {Number} y  The y-orientation of the source.
+   * @param  {Number} z  The z-orientation of the source.
+   * @param  {Number} id (optional) The sound ID. If none is passed, all in group will be updated.
+   * @return {Howl/Array}    Returns self or the current 3D spatial orientation: [x, y, z].
+   */
+  Howl.prototype.orientation = function(x, y, z, id) {
+    var self = this;
+
+    // Stop right here if not using Web Audio.
+    if (!self._webAudio) {
+      return self;
+    }
+
+    // If the sound hasn't loaded, add it to the load queue to change orientation when capable.
+    if (self._state !== 'loaded') {
+      self._queue.push({
+        event: 'orientation',
+        action: function() {
+          self.orientation(x, y, z, id);
+        }
+      });
+
+      return self;
+    }
+
+    // Set the defaults for optional 'y' & 'z'.
+    y = (typeof y !== 'number') ? self._orientation[1] : y;
+    z = (typeof z !== 'number') ? self._orientation[2] : z;
+
+    // Setup the group's spatial orientation if no ID is passed.
+    if (typeof id === 'undefined') {
+      // Return the group's spatial orientation if no parameters are passed.
+      if (typeof x === 'number') {
+        self._orientation = [x, y, z];
+      } else {
+        return self._orientation;
+      }
+    }
+
+    // Change the spatial orientation of one or all sounds in group.
+    var ids = self._getSoundIds(id);
+    for (var i=0; i<ids.length; i++) {
+      // Get the sound.
+      var sound = self._soundById(ids[i]);
+
+      if (sound) {
+        if (typeof x === 'number') {
+          sound._orientation = [x, y, z];
+
+          if (sound._node) {
+            // Check if there is a panner setup and create a new one if not.
+            if (!sound._panner) {
+              // Make sure we have a position to setup the node with.
+              if (!sound._pos) {
+                sound._pos = self._pos || [0, 0, -0.5];
+              }
+
+              setupPanner(sound, 'spatial');
+            }
+
+            if (typeof sound._panner.orientationX !== 'undefined') {
+              sound._panner.orientationX.setValueAtTime(x, Howler.ctx.currentTime);
+              sound._panner.orientationY.setValueAtTime(y, Howler.ctx.currentTime);
+              sound._panner.orientationZ.setValueAtTime(z, Howler.ctx.currentTime);
+            } else {
+              sound._panner.setOrientation(x, y, z);
+            }
+          }
+
+          self._emit('orientation', sound._id);
+        } else {
+          return sound._orientation;
+        }
+      }
+    }
+
+    return self;
+  };
+
+  /**
+   * Get/set the panner node's attributes for a sound or group of sounds.
+   * This method can optionall take 0, 1 or 2 arguments.
+   *   pannerAttr() -> Returns the group's values.
+   *   pannerAttr(id) -> Returns the sound id's values.
+   *   pannerAttr(o) -> Set's the values of all sounds in this Howl group.
+   *   pannerAttr(o, id) -> Set's the values of passed sound id.
+   *
+   *   Attributes:
+   *     coneInnerAngle - (360 by default) A parameter for directional audio sources, this is an angle, in degrees,
+   *                      inside of which there will be no volume reduction.
+   *     coneOuterAngle - (360 by default) A parameter for directional audio sources, this is an angle, in degrees,
+   *                      outside of which the volume will be reduced to a constant value of `coneOuterGain`.
+   *     coneOuterGain - (0 by default) A parameter for directional audio sources, this is the gain outside of the
+   *                     `coneOuterAngle`. It is a linear value in the range `[0, 1]`.
+   *     distanceModel - ('inverse' by default) Determines algorithm used to reduce volume as audio moves away from
+   *                     listener. Can be `linear`, `inverse` or `exponential.
+   *     maxDistance - (10000 by default) The maximum distance between source and listener, after which the volume
+   *                   will not be reduced any further.
+   *     refDistance - (1 by default) A reference distance for reducing volume as source moves further from the listener.
+   *                   This is simply a variable of the distance model and has a different effect depending on which model
+   *                   is used and the scale of your coordinates. Generally, volume will be equal to 1 at this distance.
+   *     rolloffFactor - (1 by default) How quickly the volume reduces as source moves from listener. This is simply a
+   *                     variable of the distance model and can be in the range of `[0, 1]` with `linear` and `[0, ∞]`
+   *                     with `inverse` and `exponential`.
+   *     panningModel - ('HRTF' by default) Determines which spatialization algorithm is used to position audio.
+   *                     Can be `HRTF` or `equalpower`.
+   *
+   * @return {Howl/Object} Returns self or current panner attributes.
+   */
+  Howl.prototype.pannerAttr = function() {
+    var self = this;
+    var args = arguments;
+    var o, id, sound;
+
+    // Stop right here if not using Web Audio.
+    if (!self._webAudio) {
+      return self;
+    }
+
+    // Determine the values based on arguments.
+    if (args.length === 0) {
+      // Return the group's panner attribute values.
+      return self._pannerAttr;
+    } else if (args.length === 1) {
+      if (typeof args[0] === 'object') {
+        o = args[0];
+
+        // Set the grou's panner attribute values.
+        if (typeof id === 'undefined') {
+          if (!o.pannerAttr) {
+            o.pannerAttr = {
+              coneInnerAngle: o.coneInnerAngle,
+              coneOuterAngle: o.coneOuterAngle,
+              coneOuterGain: o.coneOuterGain,
+              distanceModel: o.distanceModel,
+              maxDistance: o.maxDistance,
+              refDistance: o.refDistance,
+              rolloffFactor: o.rolloffFactor,
+              panningModel: o.panningModel
+            };
+          }
+
+          self._pannerAttr = {
+            coneInnerAngle: typeof o.pannerAttr.coneInnerAngle !== 'undefined' ? o.pannerAttr.coneInnerAngle : self._coneInnerAngle,
+            coneOuterAngle: typeof o.pannerAttr.coneOuterAngle !== 'undefined' ? o.pannerAttr.coneOuterAngle : self._coneOuterAngle,
+            coneOuterGain: typeof o.pannerAttr.coneOuterGain !== 'undefined' ? o.pannerAttr.coneOuterGain : self._coneOuterGain,
+            distanceModel: typeof o.pannerAttr.distanceModel !== 'undefined' ? o.pannerAttr.distanceModel : self._distanceModel,
+            maxDistance: typeof o.pannerAttr.maxDistance !== 'undefined' ? o.pannerAttr.maxDistance : self._maxDistance,
+            refDistance: typeof o.pannerAttr.refDistance !== 'undefined' ? o.pannerAttr.refDistance : self._refDistance,
+            rolloffFactor: typeof o.pannerAttr.rolloffFactor !== 'undefined' ? o.pannerAttr.rolloffFactor : self._rolloffFactor,
+            panningModel: typeof o.pannerAttr.panningModel !== 'undefined' ? o.pannerAttr.panningModel : self._panningModel
+          };
+        }
+      } else {
+        // Return this sound's panner attribute values.
+        sound = self._soundById(parseInt(args[0], 10));
+        return sound ? sound._pannerAttr : self._pannerAttr;
+      }
+    } else if (args.length === 2) {
+      o = args[0];
+      id = parseInt(args[1], 10);
+    }
+
+    // Update the values of the specified sounds.
+    var ids = self._getSoundIds(id);
+    for (var i=0; i<ids.length; i++) {
+      sound = self._soundById(ids[i]);
+
+      if (sound) {
+        // Merge the new values into the sound.
+        var pa = sound._pannerAttr;
+        pa = {
+          coneInnerAngle: typeof o.coneInnerAngle !== 'undefined' ? o.coneInnerAngle : pa.coneInnerAngle,
+          coneOuterAngle: typeof o.coneOuterAngle !== 'undefined' ? o.coneOuterAngle : pa.coneOuterAngle,
+          coneOuterGain: typeof o.coneOuterGain !== 'undefined' ? o.coneOuterGain : pa.coneOuterGain,
+          distanceModel: typeof o.distanceModel !== 'undefined' ? o.distanceModel : pa.distanceModel,
+          maxDistance: typeof o.maxDistance !== 'undefined' ? o.maxDistance : pa.maxDistance,
+          refDistance: typeof o.refDistance !== 'undefined' ? o.refDistance : pa.refDistance,
+          rolloffFactor: typeof o.rolloffFactor !== 'undefined' ? o.rolloffFactor : pa.rolloffFactor,
+          panningModel: typeof o.panningModel !== 'undefined' ? o.panningModel : pa.panningModel
+        };
+
+        // Update the panner values or create a new panner if none exists.
+        var panner = sound._panner;
+        if (panner) {
+          panner.coneInnerAngle = pa.coneInnerAngle;
+          panner.coneOuterAngle = pa.coneOuterAngle;
+          panner.coneOuterGain = pa.coneOuterGain;
+          panner.distanceModel = pa.distanceModel;
+          panner.maxDistance = pa.maxDistance;
+          panner.refDistance = pa.refDistance;
+          panner.rolloffFactor = pa.rolloffFactor;
+          panner.panningModel = pa.panningModel;
+        } else {
+          // Make sure we have a position to setup the node with.
+          if (!sound._pos) {
+            sound._pos = self._pos || [0, 0, -0.5];
+          }
+
+          // Create a new panner node.
+          setupPanner(sound, 'spatial');
+        }
+      }
+    }
+
+    return self;
+  };
+
+  /** Single Sound Methods **/
+  /***************************************************************************/
+
+  /**
+   * Add new properties to the core Sound init.
+   * @param  {Function} _super Core Sound init method.
+   * @return {Sound}
+   */
+  Sound.prototype.init = (function(_super) {
+    return function() {
+      var self = this;
+      var parent = self._parent;
+
+      // Setup user-defined default properties.
+      self._orientation = parent._orientation;
+      self._stereo = parent._stereo;
+      self._pos = parent._pos;
+      self._pannerAttr = parent._pannerAttr;
+
+      // Complete initilization with howler.js core Sound's init function.
+      _super.call(this);
+
+      // If a stereo or position was specified, set it up.
+      if (self._stereo) {
+        parent.stereo(self._stereo);
+      } else if (self._pos) {
+        parent.pos(self._pos[0], self._pos[1], self._pos[2], self._id);
+      }
+    };
+  })(Sound.prototype.init);
+
+  /**
+   * Override the Sound.reset method to clean up properties from the spatial plugin.
+   * @param  {Function} _super Sound reset method.
+   * @return {Sound}
+   */
+  Sound.prototype.reset = (function(_super) {
+    return function() {
+      var self = this;
+      var parent = self._parent;
+
+      // Reset all spatial plugin properties on this sound.
+      self._orientation = parent._orientation;
+      self._stereo = parent._stereo;
+      self._pos = parent._pos;
+      self._pannerAttr = parent._pannerAttr;
+
+      // If a stereo or position was specified, set it up.
+      if (self._stereo) {
+        parent.stereo(self._stereo);
+      } else if (self._pos) {
+        parent.pos(self._pos[0], self._pos[1], self._pos[2], self._id);
+      } else if (self._panner) {
+        // Disconnect the panner.
+        self._panner.disconnect(0);
+        self._panner = undefined;
+        parent._refreshBuffer(self);
+      }
+
+      // Complete resetting of the sound.
+      return _super.call(this);
+    };
+  })(Sound.prototype.reset);
+
+  /** Helper Methods **/
+  /***************************************************************************/
+
+  /**
+   * Create a new panner node and save it on the sound.
+   * @param  {Sound} sound Specific sound to setup panning on.
+   * @param {String} type Type of panner to create: 'stereo' or 'spatial'.
+   */
+  var setupPanner = function(sound, type) {
+    type = type || 'spatial';
+
+    // Create the new panner node.
+    if (type === 'spatial') {
+      sound._panner = Howler.ctx.createPanner();
+      sound._panner.coneInnerAngle = sound._pannerAttr.coneInnerAngle;
+      sound._panner.coneOuterAngle = sound._pannerAttr.coneOuterAngle;
+      sound._panner.coneOuterGain = sound._pannerAttr.coneOuterGain;
+      sound._panner.distanceModel = sound._pannerAttr.distanceModel;
+      sound._panner.maxDistance = sound._pannerAttr.maxDistance;
+      sound._panner.refDistance = sound._pannerAttr.refDistance;
+      sound._panner.rolloffFactor = sound._pannerAttr.rolloffFactor;
+      sound._panner.panningModel = sound._pannerAttr.panningModel;
+
+      if (typeof sound._panner.positionX !== 'undefined') {
+        sound._panner.positionX.setValueAtTime(sound._pos[0], Howler.ctx.currentTime);
+        sound._panner.positionY.setValueAtTime(sound._pos[1], Howler.ctx.currentTime);
+        sound._panner.positionZ.setValueAtTime(sound._pos[2], Howler.ctx.currentTime);
+      } else {
+        sound._panner.setPosition(sound._pos[0], sound._pos[1], sound._pos[2]);
+      }
+
+      if (typeof sound._panner.orientationX !== 'undefined') {
+        sound._panner.orientationX.setValueAtTime(sound._orientation[0], Howler.ctx.currentTime);
+        sound._panner.orientationY.setValueAtTime(sound._orientation[1], Howler.ctx.currentTime);
+        sound._panner.orientationZ.setValueAtTime(sound._orientation[2], Howler.ctx.currentTime);
+      } else {
+        sound._panner.setOrientation(sound._orientation[0], sound._orientation[1], sound._orientation[2]);
+      }
+    } else {
+      sound._panner = Howler.ctx.createStereoPanner();
+      sound._panner.pan.setValueAtTime(sound._stereo, Howler.ctx.currentTime);
+    }
+
+    sound._panner.connect(sound._node);
+
+    // Update the connections.
+    if (!sound._paused) {
+      sound._parent.pause(sound._id, true).play(sound._id, true);
+    }
+  };
+})();
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],10:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -2487,7 +5494,7 @@ exports.default = AccessibilityManager;
 core.WebGLRenderer.registerPlugin('accessibility', AccessibilityManager);
 core.CanvasRenderer.registerPlugin('accessibility', AccessibilityManager);
 
-},{"../core":34,"./accessibleTarget":10,"ismobilejs":162}],10:[function(require,module,exports){
+},{"../core":35,"./accessibleTarget":11,"ismobilejs":163}],11:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -2545,7 +5552,7 @@ exports.default = {
   _accessibleDiv: false
 };
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -2570,7 +5577,7 @@ Object.defineProperty(exports, 'AccessibilityManager', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./AccessibilityManager":9,"./accessibleTarget":10}],12:[function(require,module,exports){
+},{"./AccessibilityManager":10,"./accessibleTarget":11}],13:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -2802,7 +5809,7 @@ var Application = function () {
 
 exports.default = Application;
 
-},{"./autoDetectRenderer":14,"./const":15,"./display/Container":17,"./settings":70,"./ticker":90}],13:[function(require,module,exports){
+},{"./autoDetectRenderer":15,"./const":16,"./display/Container":18,"./settings":71,"./ticker":91}],14:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -2869,7 +5876,7 @@ var Shader = function (_GLShader) {
 
 exports.default = Shader;
 
-},{"./settings":70,"pixi-gl-core":170}],14:[function(require,module,exports){
+},{"./settings":71,"pixi-gl-core":171}],15:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -2938,7 +5945,7 @@ function autoDetectRenderer(options, arg1, arg2, arg3) {
     return new _CanvasRenderer2.default(options, arg1, arg2);
 }
 
-},{"./renderers/canvas/CanvasRenderer":46,"./renderers/webgl/WebGLRenderer":53,"./utils":94}],15:[function(require,module,exports){
+},{"./renderers/canvas/CanvasRenderer":47,"./renderers/webgl/WebGLRenderer":54,"./utils":95}],16:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -3281,7 +6288,7 @@ var UPDATE_PRIORITY = exports.UPDATE_PRIORITY = {
   UTILITY: -50
 };
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -3624,7 +6631,7 @@ var Bounds = function () {
 
 exports.default = Bounds;
 
-},{"../math":39}],17:[function(require,module,exports){
+},{"../math":40}],18:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -4242,7 +7249,7 @@ var Container = function (_DisplayObject) {
 exports.default = Container;
 Container.prototype.containerUpdateTransform = Container.prototype.updateTransform;
 
-},{"../utils":94,"./DisplayObject":18}],18:[function(require,module,exports){
+},{"../utils":95,"./DisplayObject":19}],19:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -4936,7 +7943,7 @@ var DisplayObject = function (_EventEmitter) {
 exports.default = DisplayObject;
 DisplayObject.prototype.displayObjectUpdateTransform = DisplayObject.prototype.updateTransform;
 
-},{"../const":15,"../math":39,"../settings":70,"./Bounds":16,"./Transform":19,"./TransformStatic":21,"eventemitter3":161}],19:[function(require,module,exports){
+},{"../const":16,"../math":40,"../settings":71,"./Bounds":17,"./Transform":20,"./TransformStatic":22,"eventemitter3":162}],20:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -5117,7 +8124,7 @@ var Transform = function (_TransformBase) {
 
 exports.default = Transform;
 
-},{"../math":39,"./TransformBase":20}],20:[function(require,module,exports){
+},{"../math":40,"./TransformBase":21}],21:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -5204,7 +8211,7 @@ TransformBase.prototype.updateWorldTransform = TransformBase.prototype.updateTra
 
 TransformBase.IDENTITY = new TransformBase();
 
-},{"../math":39}],21:[function(require,module,exports){
+},{"../math":40}],22:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -5414,7 +8421,7 @@ var TransformStatic = function (_TransformBase) {
 
 exports.default = TransformStatic;
 
-},{"../math":39,"./TransformBase":20}],22:[function(require,module,exports){
+},{"../math":40,"./TransformBase":21}],23:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -6768,7 +9775,7 @@ Graphics.CURVES = {
     maxSegments: 2048
 };
 
-},{"../const":15,"../display/Bounds":16,"../display/Container":17,"../math":39,"../renderers/canvas/CanvasRenderer":46,"../sprites/Sprite":71,"../textures/RenderTexture":82,"../textures/Texture":84,"../utils":94,"./GraphicsData":23,"./utils/bezierCurveTo":25}],23:[function(require,module,exports){
+},{"../const":16,"../display/Bounds":17,"../display/Container":18,"../math":40,"../renderers/canvas/CanvasRenderer":47,"../sprites/Sprite":72,"../textures/RenderTexture":83,"../textures/Texture":85,"../utils":95,"./GraphicsData":24,"./utils/bezierCurveTo":26}],24:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -6913,7 +9920,7 @@ var GraphicsData = function () {
 
 exports.default = GraphicsData;
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -7182,7 +10189,7 @@ exports.default = CanvasGraphicsRenderer;
 
 _CanvasRenderer2.default.registerPlugin('graphics', CanvasGraphicsRenderer);
 
-},{"../../const":15,"../../renderers/canvas/CanvasRenderer":46}],25:[function(require,module,exports){
+},{"../../const":16,"../../renderers/canvas/CanvasRenderer":47}],26:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -7232,7 +10239,7 @@ function bezierCurveTo(fromX, fromY, cpX, cpY, cpX2, cpY2, toX, toY, n) {
     return path;
 }
 
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -7497,7 +10504,7 @@ exports.default = GraphicsRenderer;
 
 _WebGLRenderer2.default.registerPlugin('graphics', GraphicsRenderer);
 
-},{"../../const":15,"../../renderers/webgl/WebGLRenderer":53,"../../renderers/webgl/utils/ObjectRenderer":63,"../../utils":94,"./WebGLGraphicsData":27,"./shaders/PrimitiveShader":28,"./utils/buildCircle":29,"./utils/buildPoly":31,"./utils/buildRectangle":32,"./utils/buildRoundedRectangle":33}],27:[function(require,module,exports){
+},{"../../const":16,"../../renderers/webgl/WebGLRenderer":54,"../../renderers/webgl/utils/ObjectRenderer":64,"../../utils":95,"./WebGLGraphicsData":28,"./shaders/PrimitiveShader":29,"./utils/buildCircle":30,"./utils/buildPoly":32,"./utils/buildRectangle":33,"./utils/buildRoundedRectangle":34}],28:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -7640,7 +10647,7 @@ var WebGLGraphicsData = function () {
 
 exports.default = WebGLGraphicsData;
 
-},{"pixi-gl-core":170}],28:[function(require,module,exports){
+},{"pixi-gl-core":171}],29:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -7685,7 +10692,7 @@ var PrimitiveShader = function (_Shader) {
 
 exports.default = PrimitiveShader;
 
-},{"../../../Shader":13}],29:[function(require,module,exports){
+},{"../../../Shader":14}],30:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -7778,7 +10785,7 @@ function buildCircle(graphicsData, webGLData, webGLDataNativeLines) {
     }
 }
 
-},{"../../../const":15,"../../../utils":94,"./buildLine":30}],30:[function(require,module,exports){
+},{"../../../const":16,"../../../utils":95,"./buildLine":31}],31:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -8052,7 +11059,7 @@ function buildNativeLine(graphicsData, webGLData) {
     }
 }
 
-},{"../../../math":39,"../../../utils":94}],31:[function(require,module,exports){
+},{"../../../math":40,"../../../utils":95}],32:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -8138,7 +11145,7 @@ function buildPoly(graphicsData, webGLData, webGLDataNativeLines) {
     }
 }
 
-},{"../../../utils":94,"./buildLine":30,"earcut":160}],32:[function(require,module,exports){
+},{"../../../utils":95,"./buildLine":31,"earcut":161}],33:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -8214,7 +11221,7 @@ function buildRectangle(graphicsData, webGLData, webGLDataNativeLines) {
     }
 }
 
-},{"../../../utils":94,"./buildLine":30}],33:[function(require,module,exports){
+},{"../../../utils":95,"./buildLine":31}],34:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -8370,7 +11377,7 @@ function quadraticBezierCurve(fromX, fromY, cpX, cpY, toX, toY) {
     return points;
 }
 
-},{"../../../utils":94,"./buildLine":30,"earcut":160}],34:[function(require,module,exports){
+},{"../../../utils":95,"./buildLine":31,"earcut":161}],35:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -8756,7 +11763,7 @@ exports.WebGLRenderer = _WebGLRenderer2.default; /**
                                                   * @namespace PIXI
                                                   */
 
-},{"./Application":12,"./Shader":13,"./autoDetectRenderer":14,"./const":15,"./display/Bounds":16,"./display/Container":17,"./display/DisplayObject":18,"./display/Transform":19,"./display/TransformBase":20,"./display/TransformStatic":21,"./graphics/Graphics":22,"./graphics/GraphicsData":23,"./graphics/canvas/CanvasGraphicsRenderer":24,"./graphics/webgl/GraphicsRenderer":26,"./math":39,"./renderers/canvas/CanvasRenderer":46,"./renderers/canvas/utils/CanvasRenderTarget":48,"./renderers/webgl/WebGLRenderer":53,"./renderers/webgl/filters/Filter":55,"./renderers/webgl/filters/spriteMask/SpriteMaskFilter":58,"./renderers/webgl/managers/WebGLManager":62,"./renderers/webgl/utils/ObjectRenderer":63,"./renderers/webgl/utils/Quad":64,"./renderers/webgl/utils/RenderTarget":65,"./settings":70,"./sprites/Sprite":71,"./sprites/canvas/CanvasSpriteRenderer":72,"./sprites/canvas/CanvasTinter":73,"./sprites/webgl/SpriteRenderer":75,"./text/Text":77,"./text/TextMetrics":78,"./text/TextStyle":79,"./textures/BaseRenderTexture":80,"./textures/BaseTexture":81,"./textures/RenderTexture":82,"./textures/Spritesheet":83,"./textures/Texture":84,"./textures/TextureMatrix":85,"./textures/TextureUvs":86,"./textures/VideoBaseTexture":87,"./ticker":90,"./utils":94,"pixi-gl-core":170}],35:[function(require,module,exports){
+},{"./Application":13,"./Shader":14,"./autoDetectRenderer":15,"./const":16,"./display/Bounds":17,"./display/Container":18,"./display/DisplayObject":19,"./display/Transform":20,"./display/TransformBase":21,"./display/TransformStatic":22,"./graphics/Graphics":23,"./graphics/GraphicsData":24,"./graphics/canvas/CanvasGraphicsRenderer":25,"./graphics/webgl/GraphicsRenderer":27,"./math":40,"./renderers/canvas/CanvasRenderer":47,"./renderers/canvas/utils/CanvasRenderTarget":49,"./renderers/webgl/WebGLRenderer":54,"./renderers/webgl/filters/Filter":56,"./renderers/webgl/filters/spriteMask/SpriteMaskFilter":59,"./renderers/webgl/managers/WebGLManager":63,"./renderers/webgl/utils/ObjectRenderer":64,"./renderers/webgl/utils/Quad":65,"./renderers/webgl/utils/RenderTarget":66,"./settings":71,"./sprites/Sprite":72,"./sprites/canvas/CanvasSpriteRenderer":73,"./sprites/canvas/CanvasTinter":74,"./sprites/webgl/SpriteRenderer":76,"./text/Text":78,"./text/TextMetrics":79,"./text/TextStyle":80,"./textures/BaseRenderTexture":81,"./textures/BaseTexture":82,"./textures/RenderTexture":83,"./textures/Spritesheet":84,"./textures/Texture":85,"./textures/TextureMatrix":86,"./textures/TextureUvs":87,"./textures/VideoBaseTexture":88,"./ticker":91,"./utils":95,"pixi-gl-core":171}],36:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -8949,7 +11956,7 @@ var GroupD8 = {
 
 exports.default = GroupD8;
 
-},{"./Matrix":36}],36:[function(require,module,exports){
+},{"./Matrix":37}],37:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -9471,7 +12478,7 @@ var Matrix = function () {
 
 exports.default = Matrix;
 
-},{"../const":15,"./Point":38}],37:[function(require,module,exports){
+},{"../const":16,"./Point":39}],38:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -9588,7 +12595,7 @@ var ObservablePoint = function () {
 
 exports.default = ObservablePoint;
 
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -9679,7 +12686,7 @@ var Point = function () {
 
 exports.default = Point;
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -9767,7 +12774,7 @@ Object.defineProperty(exports, 'RoundedRectangle', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./GroupD8":35,"./Matrix":36,"./ObservablePoint":37,"./Point":38,"./shapes/Circle":40,"./shapes/Ellipse":41,"./shapes/Polygon":42,"./shapes/Rectangle":43,"./shapes/RoundedRectangle":44}],40:[function(require,module,exports){
+},{"./GroupD8":36,"./Matrix":37,"./ObservablePoint":38,"./Point":39,"./shapes/Circle":41,"./shapes/Ellipse":42,"./shapes/Polygon":43,"./shapes/Rectangle":44,"./shapes/RoundedRectangle":45}],41:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -9881,7 +12888,7 @@ var Circle = function () {
 
 exports.default = Circle;
 
-},{"../../const":15,"./Rectangle":43}],41:[function(require,module,exports){
+},{"../../const":16,"./Rectangle":44}],42:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -10003,7 +13010,7 @@ var Ellipse = function () {
 
 exports.default = Ellipse;
 
-},{"../../const":15,"./Rectangle":43}],42:[function(require,module,exports){
+},{"../../const":16,"./Rectangle":44}],43:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -10134,7 +13141,7 @@ var Polygon = function () {
 
 exports.default = Polygon;
 
-},{"../../const":15,"../Point":38}],43:[function(require,module,exports){
+},{"../../const":16,"../Point":39}],44:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -10397,7 +13404,7 @@ var Rectangle = function () {
 
 exports.default = Rectangle;
 
-},{"../../const":15}],44:[function(require,module,exports){
+},{"../../const":16}],45:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -10530,7 +13537,7 @@ var RoundedRectangle = function () {
 
 exports.default = RoundedRectangle;
 
-},{"../../const":15}],45:[function(require,module,exports){
+},{"../../const":16}],46:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -10895,7 +13902,7 @@ var SystemRenderer = function (_EventEmitter) {
 
 exports.default = SystemRenderer;
 
-},{"../const":15,"../display/Container":17,"../math":39,"../settings":70,"../textures/RenderTexture":82,"../utils":94,"eventemitter3":161}],46:[function(require,module,exports){
+},{"../const":16,"../display/Container":18,"../math":40,"../settings":71,"../textures/RenderTexture":83,"../utils":95,"eventemitter3":162}],47:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -11260,7 +14267,7 @@ var CanvasRenderer = function (_SystemRenderer) {
 exports.default = CanvasRenderer;
 _utils.pluginTarget.mixin(CanvasRenderer);
 
-},{"../../const":15,"../../settings":70,"../../utils":94,"../SystemRenderer":45,"./utils/CanvasMaskManager":47,"./utils/CanvasRenderTarget":48,"./utils/mapCanvasBlendModesToPixi":50}],47:[function(require,module,exports){
+},{"../../const":16,"../../settings":71,"../../utils":95,"../SystemRenderer":46,"./utils/CanvasMaskManager":48,"./utils/CanvasRenderTarget":49,"./utils/mapCanvasBlendModesToPixi":51}],48:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -11429,7 +14436,7 @@ var CanvasMaskManager = function () {
 
 exports.default = CanvasMaskManager;
 
-},{"../../../const":15}],48:[function(require,module,exports){
+},{"../../../const":16}],49:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -11553,7 +14560,7 @@ var CanvasRenderTarget = function () {
 
 exports.default = CanvasRenderTarget;
 
-},{"../../../settings":70}],49:[function(require,module,exports){
+},{"../../../settings":71}],50:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -11614,7 +14621,7 @@ function canUseNewCanvasBlendModes() {
     return data[0] === 255 && data[1] === 0 && data[2] === 0;
 }
 
-},{}],50:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -11686,7 +14693,7 @@ function mapCanvasBlendModesToPixi() {
     return array;
 }
 
-},{"../../../const":15,"./canUseNewCanvasBlendModes":49}],51:[function(require,module,exports){
+},{"../../../const":16,"./canUseNewCanvasBlendModes":50}],52:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -11806,7 +14813,7 @@ var TextureGarbageCollector = function () {
 
 exports.default = TextureGarbageCollector;
 
-},{"../../const":15,"../../settings":70}],52:[function(require,module,exports){
+},{"../../const":16,"../../settings":71}],53:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -12062,7 +15069,7 @@ var TextureManager = function () {
 
 exports.default = TextureManager;
 
-},{"../../const":15,"../../utils":94,"./utils/RenderTarget":65,"pixi-gl-core":170}],53:[function(require,module,exports){
+},{"../../const":16,"../../utils":95,"./utils/RenderTarget":66,"pixi-gl-core":171}],54:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -12879,7 +15886,7 @@ var WebGLRenderer = function (_SystemRenderer) {
 exports.default = WebGLRenderer;
 _utils.pluginTarget.mixin(WebGLRenderer);
 
-},{"../../const":15,"../../textures/BaseTexture":81,"../../utils":94,"../SystemRenderer":45,"./TextureGarbageCollector":51,"./TextureManager":52,"./WebGLState":54,"./managers/FilterManager":59,"./managers/MaskManager":60,"./managers/StencilManager":61,"./utils/ObjectRenderer":63,"./utils/RenderTarget":65,"./utils/mapWebGLDrawModesToPixi":68,"./utils/validateContext":69,"pixi-gl-core":170}],54:[function(require,module,exports){
+},{"../../const":16,"../../textures/BaseTexture":82,"../../utils":95,"../SystemRenderer":46,"./TextureGarbageCollector":52,"./TextureManager":53,"./WebGLState":55,"./managers/FilterManager":60,"./managers/MaskManager":61,"./managers/StencilManager":62,"./utils/ObjectRenderer":64,"./utils/RenderTarget":66,"./utils/mapWebGLDrawModesToPixi":69,"./utils/validateContext":70,"pixi-gl-core":171}],55:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -13159,7 +16166,7 @@ var WebGLState = function () {
 
 exports.default = WebGLState;
 
-},{"./utils/mapWebGLBlendModesToPixi":67}],55:[function(require,module,exports){
+},{"./utils/mapWebGLBlendModesToPixi":68}],56:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -13355,7 +16362,7 @@ var Filter = function () {
 
 exports.default = Filter;
 
-},{"../../../const":15,"../../../settings":70,"../../../utils":94,"./extractUniformsFromSrc":56}],56:[function(require,module,exports){
+},{"../../../const":16,"../../../settings":71,"../../../utils":95,"./extractUniformsFromSrc":57}],57:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -13417,7 +16424,7 @@ function extractUniformsFromString(string) {
     return uniforms;
 }
 
-},{"pixi-gl-core":170}],57:[function(require,module,exports){
+},{"pixi-gl-core":171}],58:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -13477,7 +16484,7 @@ function calculateSpriteMatrix(outputMatrix, filterArea, textureSize, sprite) {
     return mappedMatrix;
 }
 
-},{"../../../math":39}],58:[function(require,module,exports){
+},{"../../../math":40}],59:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -13565,7 +16572,7 @@ var SpriteMaskFilter = function (_Filter) {
 
 exports.default = SpriteMaskFilter;
 
-},{"../../../../math":39,"../../../../textures/TextureMatrix":85,"../Filter":55,"path":1}],59:[function(require,module,exports){
+},{"../../../../math":40,"../../../../textures/TextureMatrix":86,"../Filter":56,"path":1}],60:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -14215,7 +17222,7 @@ var FilterManager = function (_WebGLManager) {
 
 exports.default = FilterManager;
 
-},{"../../../Shader":13,"../../../math":39,"../filters/filterTransforms":57,"../utils/Quad":64,"../utils/RenderTarget":65,"./WebGLManager":62,"bit-twiddle":159}],60:[function(require,module,exports){
+},{"../../../Shader":14,"../../../math":40,"../filters/filterTransforms":58,"../utils/Quad":65,"../utils/RenderTarget":66,"./WebGLManager":63,"bit-twiddle":160}],61:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -14425,7 +17432,7 @@ var MaskManager = function (_WebGLManager) {
 
 exports.default = MaskManager;
 
-},{"../filters/spriteMask/SpriteMaskFilter":58,"./WebGLManager":62}],61:[function(require,module,exports){
+},{"../filters/spriteMask/SpriteMaskFilter":59,"./WebGLManager":63}],62:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -14578,7 +17585,7 @@ var StencilManager = function (_WebGLManager) {
 
 exports.default = StencilManager;
 
-},{"./WebGLManager":62}],62:[function(require,module,exports){
+},{"./WebGLManager":63}],63:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -14633,7 +17640,7 @@ var WebGLManager = function () {
 
 exports.default = WebGLManager;
 
-},{}],63:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -14711,7 +17718,7 @@ var ObjectRenderer = function (_WebGLManager) {
 
 exports.default = ObjectRenderer;
 
-},{"../managers/WebGLManager":62}],64:[function(require,module,exports){
+},{"../managers/WebGLManager":63}],65:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -14892,7 +17899,7 @@ var Quad = function () {
 
 exports.default = Quad;
 
-},{"../../../utils/createIndicesForQuads":92,"pixi-gl-core":170}],65:[function(require,module,exports){
+},{"../../../utils/createIndicesForQuads":93,"pixi-gl-core":171}],66:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -15226,7 +18233,7 @@ var RenderTarget = function () {
 
 exports.default = RenderTarget;
 
-},{"../../../const":15,"../../../math":39,"../../../settings":70,"pixi-gl-core":170}],66:[function(require,module,exports){
+},{"../../../const":16,"../../../math":40,"../../../settings":71,"pixi-gl-core":171}],67:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -15301,7 +18308,7 @@ function generateIfTestSrc(maxIfs) {
     return src;
 }
 
-},{"pixi-gl-core":170}],67:[function(require,module,exports){
+},{"pixi-gl-core":171}],68:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -15350,7 +18357,7 @@ function mapWebGLBlendModesToPixi(gl) {
     return array;
 }
 
-},{"../../../const":15}],68:[function(require,module,exports){
+},{"../../../const":16}],69:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -15382,7 +18389,7 @@ function mapWebGLDrawModesToPixi(gl) {
   return object;
 }
 
-},{"../../../const":15}],69:[function(require,module,exports){
+},{"../../../const":16}],70:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -15398,7 +18405,7 @@ function validateContext(gl) {
     }
 }
 
-},{}],70:[function(require,module,exports){
+},{}],71:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -15643,7 +18650,7 @@ exports.default = {
   MESH_CANVAS_PADDING: 0
 };
 
-},{"./utils/canUploadSameBuffer":91,"./utils/maxRecommendedTextures":96}],71:[function(require,module,exports){
+},{"./utils/canUploadSameBuffer":92,"./utils/maxRecommendedTextures":97}],72:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -16268,7 +19275,7 @@ var Sprite = function (_Container) {
 
 exports.default = Sprite;
 
-},{"../const":15,"../display/Container":17,"../math":39,"../textures/Texture":84,"../utils":94}],72:[function(require,module,exports){
+},{"../const":16,"../display/Container":18,"../math":40,"../textures/Texture":85,"../utils":95}],73:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -16421,7 +19428,7 @@ exports.default = CanvasSpriteRenderer;
 
 _CanvasRenderer2.default.registerPlugin('sprite', CanvasSpriteRenderer);
 
-},{"../../const":15,"../../math":39,"../../renderers/canvas/CanvasRenderer":46,"./CanvasTinter":73}],73:[function(require,module,exports){
+},{"../../const":16,"../../math":40,"../../renderers/canvas/CanvasRenderer":47,"./CanvasTinter":74}],74:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -16672,7 +19679,7 @@ CanvasTinter.tintMethod = CanvasTinter.canUseMultiply ? CanvasTinter.tintWithMul
 
 exports.default = CanvasTinter;
 
-},{"../../renderers/canvas/utils/canUseNewCanvasBlendModes":49,"../../utils":94}],74:[function(require,module,exports){
+},{"../../renderers/canvas/utils/canUseNewCanvasBlendModes":50,"../../utils":95}],75:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -16725,7 +19732,7 @@ var Buffer = function () {
 
 exports.default = Buffer;
 
-},{}],75:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -17278,7 +20285,7 @@ exports.default = SpriteRenderer;
 
 _WebGLRenderer2.default.registerPlugin('sprite', SpriteRenderer);
 
-},{"../../renderers/webgl/WebGLRenderer":53,"../../renderers/webgl/utils/ObjectRenderer":63,"../../renderers/webgl/utils/checkMaxIfStatmentsInShader":66,"../../settings":70,"../../utils":94,"../../utils/createIndicesForQuads":92,"./BatchBuffer":74,"./generateMultiTextureShader":76,"bit-twiddle":159,"pixi-gl-core":170}],76:[function(require,module,exports){
+},{"../../renderers/webgl/WebGLRenderer":54,"../../renderers/webgl/utils/ObjectRenderer":64,"../../renderers/webgl/utils/checkMaxIfStatmentsInShader":67,"../../settings":71,"../../utils":95,"../../utils/createIndicesForQuads":93,"./BatchBuffer":75,"./generateMultiTextureShader":77,"bit-twiddle":160,"pixi-gl-core":171}],77:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -17341,7 +20348,7 @@ function generateSampleSrc(maxTextures) {
     return src;
 }
 
-},{"../../Shader":13,"path":1}],77:[function(require,module,exports){
+},{"../../Shader":14,"path":1}],78:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -17996,7 +21003,7 @@ var Text = function (_Sprite) {
 
 exports.default = Text;
 
-},{"../const":15,"../math":39,"../settings":70,"../sprites/Sprite":71,"../textures/Texture":84,"../utils":94,"../utils/trimCanvas":99,"./TextMetrics":78,"./TextStyle":79}],78:[function(require,module,exports){
+},{"../const":16,"../math":40,"../settings":71,"../sprites/Sprite":72,"../textures/Texture":85,"../utils":95,"../utils/trimCanvas":100,"./TextMetrics":79,"./TextStyle":80}],79:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -18696,7 +21703,7 @@ TextMetrics._breakingSpaces = [0x0009, // character tabulation
 0x205F, // medium mathematical space
 0x3000];
 
-},{}],79:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -19527,7 +22534,7 @@ function deepCopyProperties(target, source, propertyObj) {
     }
 }
 
-},{"../const":15,"../utils":94}],80:[function(require,module,exports){
+},{"../const":16,"../utils":95}],81:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -19689,7 +22696,7 @@ var BaseRenderTexture = function (_BaseTexture) {
 
 exports.default = BaseRenderTexture;
 
-},{"../settings":70,"./BaseTexture":81}],81:[function(require,module,exports){
+},{"../settings":71,"./BaseTexture":82}],82:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -20535,7 +23542,7 @@ var BaseTexture = function (_EventEmitter) {
 
 exports.default = BaseTexture;
 
-},{"../settings":70,"../utils":94,"../utils/determineCrossOrigin":93,"bit-twiddle":159,"eventemitter3":161}],82:[function(require,module,exports){
+},{"../settings":71,"../utils":95,"../utils/determineCrossOrigin":94,"bit-twiddle":160,"eventemitter3":162}],83:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -20689,7 +23696,7 @@ var RenderTexture = function (_Texture) {
 
 exports.default = RenderTexture;
 
-},{"./BaseRenderTexture":80,"./Texture":84}],83:[function(require,module,exports){
+},{"./BaseRenderTexture":81,"./Texture":85}],84:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -20954,7 +23961,7 @@ var Spritesheet = function () {
 
 exports.default = Spritesheet;
 
-},{"../":34,"../utils":94}],84:[function(require,module,exports){
+},{"../":35,"../utils":95}],85:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -21646,7 +24653,7 @@ Texture.WHITE = createWhiteTexture();
 removeAllHandlers(Texture.WHITE);
 removeAllHandlers(Texture.WHITE.baseTexture);
 
-},{"../math":39,"../settings":70,"../utils":94,"./BaseTexture":81,"./TextureUvs":86,"./VideoBaseTexture":87,"eventemitter3":161}],85:[function(require,module,exports){
+},{"../math":40,"../settings":71,"../utils":95,"./BaseTexture":82,"./TextureUvs":87,"./VideoBaseTexture":88,"eventemitter3":162}],86:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -21810,7 +24817,7 @@ var TextureMatrix = function () {
 
 exports.default = TextureMatrix;
 
-},{"../math/Matrix":36}],86:[function(require,module,exports){
+},{"../math/Matrix":37}],87:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -21915,7 +24922,7 @@ var TextureUvs = function () {
 
 exports.default = TextureUvs;
 
-},{"../math/GroupD8":35}],87:[function(require,module,exports){
+},{"../math/GroupD8":36}],88:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -22257,7 +25264,7 @@ function createSource(path, type) {
     return source;
 }
 
-},{"../const":15,"../ticker":90,"../utils":94,"../utils/determineCrossOrigin":93,"./BaseTexture":81}],88:[function(require,module,exports){
+},{"../const":16,"../ticker":91,"../utils":95,"../utils/determineCrossOrigin":94,"./BaseTexture":82}],89:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -22730,7 +25737,7 @@ var Ticker = function () {
 
 exports.default = Ticker;
 
-},{"../const":15,"../settings":70,"./TickerListener":89}],89:[function(require,module,exports){
+},{"../const":16,"../settings":71,"./TickerListener":90}],90:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -22904,7 +25911,7 @@ var TickerListener = function () {
 
 exports.default = TickerListener;
 
-},{}],90:[function(require,module,exports){
+},{}],91:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -22984,7 +25991,7 @@ shared.destroy = function () {
 exports.shared = shared;
 exports.Ticker = _Ticker2.default;
 
-},{"./Ticker":88}],91:[function(require,module,exports){
+},{"./Ticker":89}],92:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -22998,7 +26005,7 @@ function canUploadSameBuffer() {
 	return !ios;
 }
 
-},{}],92:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -23032,7 +26039,7 @@ function createIndicesForQuads(size) {
     return indices;
 }
 
-},{}],93:[function(require,module,exports){
+},{}],94:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -23088,7 +26095,7 @@ function determineCrossOrigin(url) {
     return '';
 }
 
-},{"url":7}],94:[function(require,module,exports){
+},{"url":7}],95:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -23571,7 +26578,7 @@ function premultiplyTintToRgba(tint, alpha, out, premultiply) {
     return out;
 }
 
-},{"../const":15,"../settings":70,"./mapPremultipliedBlendModes":95,"./mixin":97,"./pluginTarget":98,"earcut":160,"eventemitter3":161,"ismobilejs":162,"remove-array-items":181}],95:[function(require,module,exports){
+},{"../const":16,"../settings":71,"./mapPremultipliedBlendModes":96,"./mixin":98,"./pluginTarget":99,"earcut":161,"eventemitter3":162,"ismobilejs":163,"remove-array-items":182}],96:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -23614,7 +26621,7 @@ function mapPremultipliedBlendModes() {
     return array;
 }
 
-},{"../const":15}],96:[function(require,module,exports){
+},{"../const":16}],97:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -23636,7 +26643,7 @@ function maxRecommendedTextures(max) {
     return max;
 }
 
-},{"ismobilejs":162}],97:[function(require,module,exports){
+},{"ismobilejs":163}],98:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -23698,7 +26705,7 @@ function performMixins() {
     mixins.length = 0;
 }
 
-},{}],98:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -23764,7 +26771,7 @@ exports.default = {
     }
 };
 
-},{}],99:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -23840,7 +26847,7 @@ function trimCanvas(canvas) {
     };
 }
 
-},{}],100:[function(require,module,exports){
+},{}],101:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -24996,7 +28003,7 @@ function deprecation(core) {
     }
 }
 
-},{}],101:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -25176,7 +28183,7 @@ exports.default = CanvasExtract;
 
 core.CanvasRenderer.registerPlugin('extract', CanvasExtract);
 
-},{"../../core":34}],102:[function(require,module,exports){
+},{"../../core":35}],103:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -25201,7 +28208,7 @@ Object.defineProperty(exports, 'canvas', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./canvas/CanvasExtract":101,"./webgl/WebGLExtract":103}],103:[function(require,module,exports){
+},{"./canvas/CanvasExtract":102,"./webgl/WebGLExtract":104}],104:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -25436,7 +28443,7 @@ exports.default = WebGLExtract;
 
 core.WebGLRenderer.registerPlugin('extract', WebGLExtract);
 
-},{"../../core":34}],104:[function(require,module,exports){
+},{"../../core":35}],105:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -25845,7 +28852,7 @@ var AnimatedSprite = function (_core$Sprite) {
 
 exports.default = AnimatedSprite;
 
-},{"../core":34}],105:[function(require,module,exports){
+},{"../core":35}],106:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -26490,7 +29497,7 @@ exports.default = BitmapText;
 
 BitmapText.fonts = {};
 
-},{"../core":34,"../core/math/ObservablePoint":37,"../core/settings":70,"../core/utils":94}],106:[function(require,module,exports){
+},{"../core":35,"../core/math/ObservablePoint":38,"../core/settings":71,"../core/utils":95}],107:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -26936,7 +29943,7 @@ var TilingSprite = function (_core$Sprite) {
 
 exports.default = TilingSprite;
 
-},{"../core":34,"../core/sprites/canvas/CanvasTinter":73}],107:[function(require,module,exports){
+},{"../core":35,"../core/sprites/canvas/CanvasTinter":74}],108:[function(require,module,exports){
 'use strict';
 
 var _core = require('../core');
@@ -27340,7 +30347,7 @@ DisplayObject.prototype._cacheAsBitmapDestroy = function _cacheAsBitmapDestroy(o
     this.destroy(options);
 };
 
-},{"../core":34,"../core/textures/BaseTexture":81,"../core/textures/Texture":84,"../core/utils":94}],108:[function(require,module,exports){
+},{"../core":35,"../core/textures/BaseTexture":82,"../core/textures/Texture":85,"../core/utils":95}],109:[function(require,module,exports){
 'use strict';
 
 var _core = require('../core');
@@ -27375,7 +30382,7 @@ core.Container.prototype.getChildByName = function getChildByName(name) {
     return null;
 };
 
-},{"../core":34}],109:[function(require,module,exports){
+},{"../core":35}],110:[function(require,module,exports){
 'use strict';
 
 var _core = require('../core');
@@ -27409,7 +30416,7 @@ core.DisplayObject.prototype.getGlobalPosition = function getGlobalPosition() {
     return point;
 };
 
-},{"../core":34}],110:[function(require,module,exports){
+},{"../core":35}],111:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -27461,7 +30468,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 // imported for side effect of extending the prototype only, contains no exports
 
-},{"./AnimatedSprite":104,"./BitmapText":105,"./TilingSprite":106,"./cacheAsBitmap":107,"./getChildByName":108,"./getGlobalPosition":109,"./webgl/TilingSpriteRenderer":111}],111:[function(require,module,exports){
+},{"./AnimatedSprite":105,"./BitmapText":106,"./TilingSprite":107,"./cacheAsBitmap":108,"./getChildByName":109,"./getGlobalPosition":110,"./webgl/TilingSpriteRenderer":112}],112:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -27623,7 +30630,7 @@ exports.default = TilingSpriteRenderer;
 
 core.WebGLRenderer.registerPlugin('tilingSprite', TilingSpriteRenderer);
 
-},{"../../core":34,"../../core/const":15,"path":1}],112:[function(require,module,exports){
+},{"../../core":35,"../../core/const":16,"path":1}],113:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -27707,7 +30714,7 @@ var AlphaFilter = function (_core$Filter) {
 
 exports.default = AlphaFilter;
 
-},{"../../core":34,"path":1}],113:[function(require,module,exports){
+},{"../../core":35,"path":1}],114:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -27881,7 +30888,7 @@ var BlurFilter = function (_core$Filter) {
 
 exports.default = BlurFilter;
 
-},{"../../core":34,"./BlurXFilter":114,"./BlurYFilter":115}],114:[function(require,module,exports){
+},{"../../core":35,"./BlurXFilter":115,"./BlurYFilter":116}],115:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -28047,7 +31054,7 @@ var BlurXFilter = function (_core$Filter) {
 
 exports.default = BlurXFilter;
 
-},{"../../core":34,"./generateBlurFragSource":116,"./generateBlurVertSource":117,"./getMaxBlurKernelSize":118}],115:[function(require,module,exports){
+},{"../../core":35,"./generateBlurFragSource":117,"./generateBlurVertSource":118,"./getMaxBlurKernelSize":119}],116:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -28212,7 +31219,7 @@ var BlurYFilter = function (_core$Filter) {
 
 exports.default = BlurYFilter;
 
-},{"../../core":34,"./generateBlurFragSource":116,"./generateBlurVertSource":117,"./getMaxBlurKernelSize":118}],116:[function(require,module,exports){
+},{"../../core":35,"./generateBlurFragSource":117,"./generateBlurVertSource":118,"./getMaxBlurKernelSize":119}],117:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -28259,7 +31266,7 @@ function generateFragBlurSource(kernelSize) {
     return fragSource;
 }
 
-},{}],117:[function(require,module,exports){
+},{}],118:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -28303,7 +31310,7 @@ function generateVertBlurSource(kernelSize, x) {
     return vertSource;
 }
 
-},{}],118:[function(require,module,exports){
+},{}],119:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -28319,7 +31326,7 @@ function getMaxKernelSize(gl) {
     return kernelSize;
 }
 
-},{}],119:[function(require,module,exports){
+},{}],120:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -28870,7 +31877,7 @@ var ColorMatrixFilter = function (_core$Filter) {
 exports.default = ColorMatrixFilter;
 ColorMatrixFilter.prototype.grayscale = ColorMatrixFilter.prototype.greyscale;
 
-},{"../../core":34,"path":1}],120:[function(require,module,exports){
+},{"../../core":35,"path":1}],121:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -28978,7 +31985,7 @@ var DisplacementFilter = function (_core$Filter) {
 
 exports.default = DisplacementFilter;
 
-},{"../../core":34,"path":1}],121:[function(require,module,exports){
+},{"../../core":35,"path":1}],122:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -29032,7 +32039,7 @@ var FXAAFilter = function (_core$Filter) {
 
 exports.default = FXAAFilter;
 
-},{"../../core":34,"path":1}],122:[function(require,module,exports){
+},{"../../core":35,"path":1}],123:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -29111,7 +32118,7 @@ Object.defineProperty(exports, 'AlphaFilter', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./alpha/AlphaFilter":112,"./blur/BlurFilter":113,"./blur/BlurXFilter":114,"./blur/BlurYFilter":115,"./colormatrix/ColorMatrixFilter":119,"./displacement/DisplacementFilter":120,"./fxaa/FXAAFilter":121,"./noise/NoiseFilter":123}],123:[function(require,module,exports){
+},{"./alpha/AlphaFilter":113,"./blur/BlurFilter":114,"./blur/BlurXFilter":115,"./blur/BlurYFilter":116,"./colormatrix/ColorMatrixFilter":120,"./displacement/DisplacementFilter":121,"./fxaa/FXAAFilter":122,"./noise/NoiseFilter":124}],124:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -29208,7 +32215,7 @@ var NoiseFilter = function (_core$Filter) {
 
 exports.default = NoiseFilter;
 
-},{"../../core":34,"path":1}],124:[function(require,module,exports){
+},{"../../core":35,"path":1}],125:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -29322,7 +32329,7 @@ if (typeof _deprecation2.default === 'function') {
 global.PIXI = exports; // eslint-disable-line
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./accessibility":11,"./core":34,"./deprecation":100,"./extract":102,"./extras":110,"./filters":122,"./interaction":129,"./loaders":132,"./mesh":141,"./particles":144,"./polyfill":151,"./prepare":155}],125:[function(require,module,exports){
+},{"./accessibility":12,"./core":35,"./deprecation":101,"./extract":103,"./extras":111,"./filters":123,"./interaction":130,"./loaders":133,"./mesh":142,"./particles":145,"./polyfill":152,"./prepare":156}],126:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -29545,7 +32552,7 @@ var InteractionData = function () {
 
 exports.default = InteractionData;
 
-},{"../core":34}],126:[function(require,module,exports){
+},{"../core":35}],127:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -29628,7 +32635,7 @@ var InteractionEvent = function () {
 
 exports.default = InteractionEvent;
 
-},{}],127:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -31407,7 +34414,7 @@ exports.default = InteractionManager;
 core.WebGLRenderer.registerPlugin('interaction', InteractionManager);
 core.CanvasRenderer.registerPlugin('interaction', InteractionManager);
 
-},{"../core":34,"./InteractionData":125,"./InteractionEvent":126,"./InteractionTrackingData":128,"./interactiveTarget":130,"eventemitter3":161}],128:[function(require,module,exports){
+},{"../core":35,"./InteractionData":126,"./InteractionEvent":127,"./InteractionTrackingData":129,"./interactiveTarget":131,"eventemitter3":162}],129:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -31583,7 +34590,7 @@ InteractionTrackingData.FLAGS = Object.freeze({
     RIGHT_DOWN: 1 << 2
 });
 
-},{}],129:[function(require,module,exports){
+},{}],130:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -31635,7 +34642,7 @@ Object.defineProperty(exports, 'InteractionEvent', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./InteractionData":125,"./InteractionEvent":126,"./InteractionManager":127,"./InteractionTrackingData":128,"./interactiveTarget":130}],130:[function(require,module,exports){
+},{"./InteractionData":126,"./InteractionEvent":127,"./InteractionManager":128,"./InteractionTrackingData":129,"./interactiveTarget":131}],131:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -31752,7 +34759,7 @@ exports.default = {
   _trackedPointers: undefined
 };
 
-},{}],131:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -31866,7 +34873,7 @@ function parse(resource, textures) {
     resource.bitmapFont = _extras.BitmapText.registerFont(resource.data, textures);
 }
 
-},{"../extras":110,"path":1,"resource-loader":186}],132:[function(require,module,exports){
+},{"../extras":111,"path":1,"resource-loader":187}],133:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -31994,7 +35001,7 @@ AppPrototype.destroy = function destroy(removeView, stageOptions) {
     this._parentDestroy(removeView, stageOptions);
 };
 
-},{"../core/Application":12,"./bitmapFontParser":131,"./loader":133,"./spritesheetParser":134,"./textureParser":135,"resource-loader":186}],133:[function(require,module,exports){
+},{"../core/Application":13,"./bitmapFontParser":132,"./loader":134,"./spritesheetParser":135,"./textureParser":136,"resource-loader":187}],134:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -32165,7 +35172,7 @@ var Resource = _resourceLoader2.default.Resource;
 
 Resource.setExtensionXhrType('fnt', Resource.XHR_RESPONSE_TYPE.DOCUMENT);
 
-},{"./bitmapFontParser":131,"./spritesheetParser":134,"./textureParser":135,"eventemitter3":161,"resource-loader":186,"resource-loader/lib/middlewares/parsing/blob":187}],134:[function(require,module,exports){
+},{"./bitmapFontParser":132,"./spritesheetParser":135,"./textureParser":136,"eventemitter3":162,"resource-loader":187,"resource-loader/lib/middlewares/parsing/blob":188}],135:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -32229,7 +35236,7 @@ function getResourcePath(resource, baseUrl) {
     return _url2.default.resolve(resource.url.replace(baseUrl, ''), resource.data.meta.image);
 }
 
-},{"../core":34,"resource-loader":186,"url":7}],135:[function(require,module,exports){
+},{"../core":35,"resource-loader":187,"url":7}],136:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -32252,7 +35259,7 @@ var _Texture2 = _interopRequireDefault(_Texture);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"../core/textures/Texture":84,"resource-loader":186}],136:[function(require,module,exports){
+},{"../core/textures/Texture":85,"resource-loader":187}],137:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -32683,7 +35690,7 @@ Mesh.DRAW_MODES = {
     TRIANGLES: 1
 };
 
-},{"../core":34,"../core/textures/Texture":84}],137:[function(require,module,exports){
+},{"../core":35,"../core/textures/Texture":85}],138:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -33076,7 +36083,7 @@ var NineSlicePlane = function (_Plane) {
 
 exports.default = NineSlicePlane;
 
-},{"./Plane":138}],138:[function(require,module,exports){
+},{"./Plane":139}],139:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -33217,7 +36224,7 @@ var Plane = function (_Mesh) {
 
 exports.default = Plane;
 
-},{"./Mesh":136}],139:[function(require,module,exports){
+},{"./Mesh":137}],140:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -33453,7 +36460,7 @@ var Rope = function (_Mesh) {
 
 exports.default = Rope;
 
-},{"./Mesh":136}],140:[function(require,module,exports){
+},{"./Mesh":137}],141:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -33739,7 +36746,7 @@ exports.default = MeshSpriteRenderer;
 
 core.CanvasRenderer.registerPlugin('mesh', MeshSpriteRenderer);
 
-},{"../../core":34,"../Mesh":136}],141:[function(require,module,exports){
+},{"../../core":35,"../Mesh":137}],142:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -33800,7 +36807,7 @@ Object.defineProperty(exports, 'Rope', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./Mesh":136,"./NineSlicePlane":137,"./Plane":138,"./Rope":139,"./canvas/CanvasMeshRenderer":140,"./webgl/MeshRenderer":142}],142:[function(require,module,exports){
+},{"./Mesh":137,"./NineSlicePlane":138,"./Plane":139,"./Rope":140,"./canvas/CanvasMeshRenderer":141,"./webgl/MeshRenderer":143}],143:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -33955,7 +36962,7 @@ exports.default = MeshRenderer;
 
 core.WebGLRenderer.registerPlugin('mesh', MeshRenderer);
 
-},{"../../core":34,"../Mesh":136,"path":1,"pixi-gl-core":170}],143:[function(require,module,exports){
+},{"../../core":35,"../Mesh":137,"path":1,"pixi-gl-core":171}],144:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -34345,7 +37352,7 @@ var ParticleContainer = function (_core$Container) {
 
 exports.default = ParticleContainer;
 
-},{"../core":34,"../core/utils":94}],144:[function(require,module,exports){
+},{"../core":35,"../core/utils":95}],145:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -34370,7 +37377,7 @@ Object.defineProperty(exports, 'ParticleRenderer', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./ParticleContainer":143,"./webgl/ParticleRenderer":146}],145:[function(require,module,exports){
+},{"./ParticleContainer":144,"./webgl/ParticleRenderer":147}],146:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -34619,7 +37626,7 @@ var ParticleBuffer = function () {
 
 exports.default = ParticleBuffer;
 
-},{"../../core/utils/createIndicesForQuads":92,"pixi-gl-core":170}],146:[function(require,module,exports){
+},{"../../core/utils/createIndicesForQuads":93,"pixi-gl-core":171}],147:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -35100,7 +38107,7 @@ exports.default = ParticleRenderer;
 
 core.WebGLRenderer.registerPlugin('particle', ParticleRenderer);
 
-},{"../../core":34,"../../core/utils":94,"./ParticleBuffer":145,"./ParticleShader":147}],147:[function(require,module,exports){
+},{"../../core":35,"../../core/utils":95,"./ParticleBuffer":146,"./ParticleShader":148}],148:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -35143,7 +38150,7 @@ var ParticleShader = function (_Shader) {
 
 exports.default = ParticleShader;
 
-},{"../../core/Shader":13}],148:[function(require,module,exports){
+},{"../../core/Shader":14}],149:[function(require,module,exports){
 "use strict";
 
 // References:
@@ -35161,7 +38168,7 @@ if (!Math.sign) {
     };
 }
 
-},{}],149:[function(require,module,exports){
+},{}],150:[function(require,module,exports){
 'use strict';
 
 // References:
@@ -35173,7 +38180,7 @@ if (!Number.isInteger) {
     };
 }
 
-},{}],150:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 'use strict';
 
 var _objectAssign = require('object-assign');
@@ -35188,7 +38195,7 @@ if (!Object.assign) {
 // https://github.com/sindresorhus/object-assign
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
 
-},{"object-assign":163}],151:[function(require,module,exports){
+},{"object-assign":164}],152:[function(require,module,exports){
 'use strict';
 
 require('./Object.assign');
@@ -35215,7 +38222,7 @@ if (!window.Uint16Array) {
     window.Uint16Array = Array;
 }
 
-},{"./Math.sign":148,"./Number.isInteger":149,"./Object.assign":150,"./requestAnimationFrame":152}],152:[function(require,module,exports){
+},{"./Math.sign":149,"./Number.isInteger":150,"./Object.assign":151,"./requestAnimationFrame":153}],153:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -35292,7 +38299,7 @@ if (!global.cancelAnimationFrame) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],153:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -35780,7 +38787,7 @@ function findTextStyle(item, queue) {
     return false;
 }
 
-},{"../core":34,"./limiters/CountLimiter":156}],154:[function(require,module,exports){
+},{"../core":35,"./limiters/CountLimiter":157}],155:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -35900,7 +38907,7 @@ function uploadBaseTextures(prepare, item) {
 
 core.CanvasRenderer.registerPlugin('prepare', CanvasPrepare);
 
-},{"../../core":34,"../BasePrepare":153}],155:[function(require,module,exports){
+},{"../../core":35,"../BasePrepare":154}],156:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -35952,7 +38959,7 @@ Object.defineProperty(exports, 'TimeLimiter', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-},{"./BasePrepare":153,"./canvas/CanvasPrepare":154,"./limiters/CountLimiter":156,"./limiters/TimeLimiter":157,"./webgl/WebGLPrepare":158}],156:[function(require,module,exports){
+},{"./BasePrepare":154,"./canvas/CanvasPrepare":155,"./limiters/CountLimiter":157,"./limiters/TimeLimiter":158,"./webgl/WebGLPrepare":159}],157:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -36010,7 +39017,7 @@ var CountLimiter = function () {
 
 exports.default = CountLimiter;
 
-},{}],157:[function(require,module,exports){
+},{}],158:[function(require,module,exports){
 "use strict";
 
 exports.__esModule = true;
@@ -36068,7 +39075,7 @@ var TimeLimiter = function () {
 
 exports.default = TimeLimiter;
 
-},{}],158:[function(require,module,exports){
+},{}],159:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -36190,7 +39197,7 @@ function findGraphics(item, queue) {
 
 core.WebGLRenderer.registerPlugin('prepare', WebGLPrepare);
 
-},{"../../core":34,"../BasePrepare":153}],159:[function(require,module,exports){
+},{"../../core":35,"../BasePrepare":154}],160:[function(require,module,exports){
 /**
  * Bit twiddling hacks for JavaScript.
  *
@@ -36396,7 +39403,7 @@ exports.nextCombination = function(v) {
 }
 
 
-},{}],160:[function(require,module,exports){
+},{}],161:[function(require,module,exports){
 'use strict';
 
 module.exports = earcut;
@@ -37048,7 +40055,7 @@ earcut.flatten = function (data) {
     return result;
 };
 
-},{}],161:[function(require,module,exports){
+},{}],162:[function(require,module,exports){
 'use strict';
 
 var has = Object.prototype.hasOwnProperty
@@ -37361,7 +40368,7 @@ if ('undefined' !== typeof module) {
   module.exports = EventEmitter;
 }
 
-},{}],162:[function(require,module,exports){
+},{}],163:[function(require,module,exports){
 /**
  * isMobile.js v0.4.1
  *
@@ -37500,7 +40507,7 @@ if ('undefined' !== typeof module) {
 
 })(this);
 
-},{}],163:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 /*
 object-assign
 (c) Sindre Sorhus
@@ -37592,7 +40599,7 @@ module.exports = shouldUseNative() ? Object.assign : function (target, source) {
 	return to;
 };
 
-},{}],164:[function(require,module,exports){
+},{}],165:[function(require,module,exports){
 var EMPTY_ARRAY_BUFFER = new ArrayBuffer(0);
 
 /**
@@ -37713,7 +40720,7 @@ Buffer.prototype.destroy = function(){
 
 module.exports = Buffer;
 
-},{}],165:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 
 var Texture = require('./GLTexture');
 
@@ -37941,7 +40948,7 @@ Framebuffer.createFloat32 = function(gl, width, height, data)
 
 module.exports = Framebuffer;
 
-},{"./GLTexture":167}],166:[function(require,module,exports){
+},{"./GLTexture":168}],167:[function(require,module,exports){
 
 var compileProgram = require('./shader/compileProgram'),
 	extractAttributes = require('./shader/extractAttributes'),
@@ -38037,7 +41044,7 @@ Shader.prototype.destroy = function()
 
 module.exports = Shader;
 
-},{"./shader/compileProgram":172,"./shader/extractAttributes":174,"./shader/extractUniforms":175,"./shader/generateUniformAccessObject":176,"./shader/setPrecision":180}],167:[function(require,module,exports){
+},{"./shader/compileProgram":173,"./shader/extractAttributes":175,"./shader/extractUniforms":176,"./shader/generateUniformAccessObject":177,"./shader/setPrecision":181}],168:[function(require,module,exports){
 
 /**
  * Helper class to create a WebGL Texture
@@ -38372,7 +41379,7 @@ Texture.fromData = function(gl, data, width, height)
 
 module.exports = Texture;
 
-},{}],168:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 
 // state object//
 var setVertexAttribArrays = require( './setVertexAttribArrays' );
@@ -38640,7 +41647,7 @@ VertexArrayObject.prototype.getSize = function()
     return attrib.buffer.data.length / (( attrib.stride/4 ) || attrib.attribute.size);
 };
 
-},{"./setVertexAttribArrays":171}],169:[function(require,module,exports){
+},{"./setVertexAttribArrays":172}],170:[function(require,module,exports){
 
 /**
  * Helper class to create a webGL Context
@@ -38668,7 +41675,7 @@ var createContext = function(canvas, options)
 
 module.exports = createContext;
 
-},{}],170:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 var gl = {
     createContext:          require('./createContext'),
     setVertexAttribArrays:  require('./setVertexAttribArrays'),
@@ -38695,7 +41702,7 @@ if (typeof window !== 'undefined')
     window.PIXI.glCore = gl;
 }
 
-},{"./GLBuffer":164,"./GLFramebuffer":165,"./GLShader":166,"./GLTexture":167,"./VertexArrayObject":168,"./createContext":169,"./setVertexAttribArrays":171,"./shader":177}],171:[function(require,module,exports){
+},{"./GLBuffer":165,"./GLFramebuffer":166,"./GLShader":167,"./GLTexture":168,"./VertexArrayObject":169,"./createContext":170,"./setVertexAttribArrays":172,"./shader":178}],172:[function(require,module,exports){
 // var GL_MAP = {};
 
 /**
@@ -38752,7 +41759,7 @@ var setVertexAttribArrays = function (gl, attribs, state)
 
 module.exports = setVertexAttribArrays;
 
-},{}],172:[function(require,module,exports){
+},{}],173:[function(require,module,exports){
 
 /**
  * @class
@@ -38834,7 +41841,7 @@ var compileShader = function (gl, type, src)
 
 module.exports = compileProgram;
 
-},{}],173:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 /**
  * @class
  * @memberof PIXI.glCore.shader
@@ -38914,7 +41921,7 @@ var booleanArray = function(size)
 
 module.exports = defaultValue;
 
-},{}],174:[function(require,module,exports){
+},{}],175:[function(require,module,exports){
 
 var mapType = require('./mapType');
 var mapSize = require('./mapSize');
@@ -38957,7 +41964,7 @@ var pointer = function(type, normalized, stride, start){
 
 module.exports = extractAttributes;
 
-},{"./mapSize":178,"./mapType":179}],175:[function(require,module,exports){
+},{"./mapSize":179,"./mapType":180}],176:[function(require,module,exports){
 var mapType = require('./mapType');
 var defaultValue = require('./defaultValue');
 
@@ -38994,7 +42001,7 @@ var extractUniforms = function(gl, program)
 
 module.exports = extractUniforms;
 
-},{"./defaultValue":173,"./mapType":179}],176:[function(require,module,exports){
+},{"./defaultValue":174,"./mapType":180}],177:[function(require,module,exports){
 /**
  * Extracts the attributes
  * @class
@@ -39117,7 +42124,7 @@ function getUniformGroup(nameTokens, uniform)
 
 module.exports = generateUniformAccessObject;
 
-},{}],177:[function(require,module,exports){
+},{}],178:[function(require,module,exports){
 module.exports = {
     compileProgram: require('./compileProgram'),
     defaultValue: require('./defaultValue'),
@@ -39128,7 +42135,7 @@ module.exports = {
     mapSize: require('./mapSize'),
     mapType: require('./mapType')
 };
-},{"./compileProgram":172,"./defaultValue":173,"./extractAttributes":174,"./extractUniforms":175,"./generateUniformAccessObject":176,"./mapSize":178,"./mapType":179,"./setPrecision":180}],178:[function(require,module,exports){
+},{"./compileProgram":173,"./defaultValue":174,"./extractAttributes":175,"./extractUniforms":176,"./generateUniformAccessObject":177,"./mapSize":179,"./mapType":180,"./setPrecision":181}],179:[function(require,module,exports){
 /**
  * @class
  * @memberof PIXI.glCore.shader
@@ -39166,7 +42173,7 @@ var GLSL_TO_SIZE = {
 
 module.exports = mapSize;
 
-},{}],179:[function(require,module,exports){
+},{}],180:[function(require,module,exports){
 
 
 var mapType = function(gl, type) 
@@ -39214,7 +42221,7 @@ var GL_TO_GLSL_TYPES = {
 
 module.exports = mapType;
 
-},{}],180:[function(require,module,exports){
+},{}],181:[function(require,module,exports){
 /**
  * Sets the float precision on the shader. If the precision is already present this function will do nothing
  * @param {string} src       the shader source
@@ -39234,7 +42241,7 @@ var setPrecision = function(src, precision)
 
 module.exports = setPrecision;
 
-},{}],181:[function(require,module,exports){
+},{}],182:[function(require,module,exports){
 'use strict'
 
 /**
@@ -39264,7 +42271,7 @@ module.exports = function removeItems(arr, startIdx, removeCount)
   arr.length = len
 }
 
-},{}],182:[function(require,module,exports){
+},{}],183:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -39917,7 +42924,7 @@ var Loader = function () {
 
 exports.default = Loader;
 
-},{"./Resource":183,"./async":184,"mini-signals":188,"parse-uri":189}],183:[function(require,module,exports){
+},{"./Resource":184,"./async":185,"mini-signals":189,"parse-uri":190}],184:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -41073,7 +44080,7 @@ function reqType(xhr) {
     return xhr.toString().replace('object ', '');
 }
 
-},{"mini-signals":188,"parse-uri":189}],184:[function(require,module,exports){
+},{"mini-signals":189,"parse-uri":190}],185:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -41282,7 +44289,7 @@ function queue(worker, concurrency) {
     return q;
 }
 
-},{}],185:[function(require,module,exports){
+},{}],186:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -41350,7 +44357,7 @@ function encodeBinary(input) {
     return output;
 }
 
-},{}],186:[function(require,module,exports){
+},{}],187:[function(require,module,exports){
 'use strict';
 
 // import Loader from './Loader';
@@ -41374,7 +44381,7 @@ module.exports = Loader;
 // export default Loader;
 module.exports.default = Loader;
 
-},{"./Loader":182,"./Resource":183,"./async":184,"./b64":185}],187:[function(require,module,exports){
+},{"./Loader":183,"./Resource":184,"./async":185,"./b64":186}],188:[function(require,module,exports){
 'use strict';
 
 exports.__esModule = true;
@@ -41462,7 +44469,7 @@ function blobMiddlewareFactory() {
     };
 }
 
-},{"../../Resource":183,"../../b64":185}],188:[function(require,module,exports){
+},{"../../Resource":184,"../../b64":186}],189:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
@@ -41629,7 +44636,7 @@ MiniSignal.MiniSignalBinding = MiniSignalBinding;
 exports['default'] = MiniSignal;
 module.exports = exports['default'];
 
-},{}],189:[function(require,module,exports){
+},{}],190:[function(require,module,exports){
 'use strict'
 
 module.exports = function parseURI (str, opts) {
@@ -41661,7 +44668,7 @@ module.exports = function parseURI (str, opts) {
   return uri
 }
 
-},{}],190:[function(require,module,exports){
+},{}],191:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -41782,7 +44789,7 @@ exports.default = {
   byId: byId
 };
 
-},{"./ObjectPool":197}],191:[function(require,module,exports){
+},{"./ObjectPool":198}],192:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -41898,7 +44905,7 @@ Entity.getComponents = function (entity) {
   return out;
 };
 
-},{"./Component":190,"./ObjectPool":197}],192:[function(require,module,exports){
+},{"./Component":191,"./ObjectPool":198}],193:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -42121,7 +45128,7 @@ var Game = function () {
 
 exports.default = new Game();
 
-},{"./Component":190,"./Entity":191,"./Input":194,"./System":199,"./Timer":200}],193:[function(require,module,exports){
+},{"./Component":191,"./Entity":192,"./Input":195,"./System":200,"./Timer":201}],194:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -42262,7 +45269,7 @@ var Grid = function () {
 
 exports.default = Grid;
 
-},{}],194:[function(require,module,exports){
+},{}],195:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -42673,7 +45680,7 @@ exports.Button = Button;
 exports.Pointer = Pointer;
 exports.KEYS = KEYS;
 
-},{}],195:[function(require,module,exports){
+},{}],196:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -42719,7 +45726,7 @@ var Intercom = function () {
 
 exports.default = new Intercom();
 
-},{}],196:[function(require,module,exports){
+},{}],197:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -42791,7 +45798,7 @@ function turningAngle(start, target) {
   }
 }
 
-},{}],197:[function(require,module,exports){
+},{}],198:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -42860,7 +45867,7 @@ var ObjectPool = function () {
 
 exports.default = ObjectPool;
 
-},{}],198:[function(require,module,exports){
+},{}],199:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -42926,7 +45933,7 @@ var Random = function () {
 
 exports.default = Random;
 
-},{}],199:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -42993,7 +46000,7 @@ exports.default = {
   byName: byName
 };
 
-},{"./Intercom":195}],200:[function(require,module,exports){
+},{"./Intercom":196}],201:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -43036,7 +46043,7 @@ var Timer = function () {
 
 exports.default = Timer;
 
-},{}],201:[function(require,module,exports){
+},{}],202:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -43054,6 +46061,8 @@ var _Game2 = _interopRequireDefault(_Game);
 var _shared = require('./shared');
 
 var _resources = require('./resources');
+
+var _world = require('./world');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -43139,7 +46148,7 @@ function makeEnemy(x, y, avatar) {
 
   e.transform = { x: x, y: y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.15 };
+  e.velocity = { x: 0, y: 0, drag: 0.25 };
   e.state = { orientation: 'down', moving: false }, e.targetControl = {};
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations(avatar);
@@ -43151,9 +46160,9 @@ function makeEnemy(x, y, avatar) {
 function makePlayer(x, y, avatar) {
   var e = _Game2.default.createEntity();
 
-  e.transform = { x: 200, y: 200, rotation: 0 };
+  e.transform = { x: _world.world.width / 2, y: _world.world.width / 2, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.15 };
+  e.velocity = { x: 0, y: 0, drag: 0.24 };
   e.state = { orientation: 'down', moving: false }, e.steeringControl = {};
   e.animationControl = makeHumanAnimations('ninja1');
   e.animation = { data: e.animationControl.down };
@@ -43163,9 +46172,28 @@ function makePlayer(x, y, avatar) {
 
   window.player = e;
   _shared.actors.player = e;
+
+  return e;
 }
 
-},{"../../Game":192,"./resources":205,"./shared":206}],202:[function(require,module,exports){
+},{"../../Game":193,"./resources":207,"./shared":208,"./world":210}],203:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.theme = undefined;
+
+var _howler = require('howler');
+
+var theme = exports.theme = new _howler.Howl({
+  src: ['assets/audio/slow_drip.mp3'],
+  autoplay: true,
+  loop: true,
+  volume: 0.5
+});
+
+},{"howler":9}],204:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -43186,7 +46214,17 @@ exports.default = _Game2.default.defineComponents({
   Velocity: { x: 0, y: 0 },
   Duration: { time: 0 },
   Orientation: { direction: 'right' },
+  Reference: { id: null },
   TargetControl: { targetId: null },
+  Effect: {
+    targetId: null,
+    component: null,
+    property: null,
+    start: 0,
+    end: 0,
+    range: 0,
+    theta: 0
+  },
   Weapon: {
     rateOfFire: 100,
     cooldown: 0,
@@ -43203,7 +46241,8 @@ exports.default = _Game2.default.defineComponents({
   State: {
     orientation: 'down',
     moving: false,
-    firing: false
+    firing: false,
+    hitpoints: 10
   },
   AnimationControl: {
     right: null,
@@ -43286,7 +46325,7 @@ exports.default = _Game2.default.defineComponents({
   }]
 });
 
-},{"../../Game.js":192,"./shared.js":206}],203:[function(require,module,exports){
+},{"../../Game.js":193,"./shared.js":208}],205:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -43298,13 +46337,15 @@ var _Game = require('../../Game.js');
 
 var _Game2 = _interopRequireDefault(_Game);
 
-var _Random = require('../../Random.js');
-
-var _Random2 = _interopRequireDefault(_Random);
-
 var _actors = require('./actors');
 
 var _resources = require('./resources');
+
+var _shared = require('./shared');
+
+var _world = require('./world');
+
+var _audio = require('./audio');
 
 require('./components');
 
@@ -43318,18 +46359,26 @@ window.game = _Game2.default;
 
 function start() {
   (0, _resources.load)(function () {
-    (0, _actors.makePlayer)();
-    for (var i = 0; i < 20; i++) {
+    _audio.theme.once('load', function () {
+      return _audio.theme.play();
+    });
+    (0, _world.loadMap)(_resources.maps.map1, _resources.textures.dungeon);
+    var player = (0, _actors.makePlayer)();
+    for (var i = 0; i < 4; i++) {
       (0, _actors.makeEnemy)();
     }
+    _shared.camera.target = player;
+
     _Game2.default.init();
+    // run these systems immediately to render starting state
+    // and make sure sprites have textures for generating colliders
     _Game2.default.runSystem(_Game2.default.systemsByName.animation);
     _Game2.default.runSystem(_Game2.default.systemsByName.sprite);
     _Game2.default.start();
   });
 }
 
-},{"../../Game.js":192,"../../Random.js":198,"./actors":201,"./components":202,"./input":204,"./resources":205,"./systems":207}],204:[function(require,module,exports){
+},{"../../Game.js":193,"./actors":202,"./audio":203,"./components":204,"./input":206,"./resources":207,"./shared":208,"./systems":209,"./world":210}],206:[function(require,module,exports){
 'use strict';
 
 var _Game = require('../../Game');
@@ -43346,13 +46395,13 @@ _Game2.default.input.addButton('up', _Input.KEYS.UP);
 _Game2.default.input.addButton('down', _Input.KEYS.DOWN);
 _Game2.default.input.addButton('fire', _Input.KEYS.SPACE);
 
-},{"../../Game":192,"../../Input":194}],205:[function(require,module,exports){
+},{"../../Game":193,"../../Input":195}],207:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.textures = undefined;
+exports.maps = exports.textures = undefined;
 exports.load = load;
 
 var _pixi = require('pixi.js');
@@ -43372,8 +46421,11 @@ var TYPES = [1, 2, 3, 4];
 var textures = exports.textures = {
   humans: {},
   monsters: {},
-  particles: {}
+  particles: {},
+  dungeon: []
 };
+
+var maps = exports.maps = {};
 
 var enqueuedMonsters = [];
 var enqueuedHumans = [];
@@ -43441,15 +46493,61 @@ function processParticleAssets() {
   });
 }
 
+function enqueueDungeonAssets() {
+  PIXI.loader.add('dungeon', 'assets/tiles/dungeon_tileset_32.png');
+}
+
+// using the 32 x 32 dungeon tile set
+function processDungeonAssets() {
+  var SIZE = 32;
+
+  var resource = PIXI.loader.resources['dungeon'];
+  var baseTexture = resource.texture.baseTexture;
+
+  for (var y = 0; y < baseTexture.height; y += SIZE) {
+    for (var x = 0; x < baseTexture.width; x += SIZE) {
+      var rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
+      var texture = new PIXI.Texture(baseTexture, rectangle);
+      textures.dungeon.push(texture);
+    }
+  }
+}
+
+var MAPS = ['map1'];
+
+function enqueueMapAssets() {
+  MAPS.forEach(function (map) {
+    PIXI.loader.add(map, 'assets/maps/' + map + '.txt');
+  });
+}
+
+function processMapAssets() {
+  MAPS.forEach(function (map) {
+    var data = PIXI.loader.resources[map].data;
+
+    var rows = data.split(/\s+/);
+    var grid = rows.map(function (row) {
+      return row.split('').map(function (n) {
+        return parseInt(n, 36);
+      });
+    });
+    maps[map] = grid;
+  });
+
+  console.log(maps);
+}
+
 function load(callback) {
   enqueueHumanAssets();
   enqueueParticleAssets();
+  enqueueDungeonAssets();
+  enqueueMapAssets();
 
   PIXI.loader.load(function (loader, resources) {
     processHumanAssets();
     processParticleAssets();
-    console.log(resources);
-    console.log(loader);
+    processDungeonAssets();
+    processMapAssets();
     console.log(textures);
     if (callback) {
       callback();
@@ -43457,13 +46555,15 @@ function load(callback) {
   });
 }
 
-},{"pixi.js":124}],206:[function(require,module,exports){
+var callbacks = [];
+
+},{"pixi.js":125}],208:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.grid = exports.stage = exports.app = exports.actors = exports.textures = exports.rng = exports.PLAYER = exports.ENEMY = exports.BULLET = undefined;
+exports.grid = exports.stage = exports.app = exports.camera = exports.actors = exports.rng = exports.PLAYER = exports.ENEMY = exports.BULLET = undefined;
 
 var _pixi = require('pixi.js');
 
@@ -43488,13 +46588,20 @@ var RANDOM_SEED = 42;
 var BULLET = exports.BULLET = 1 << 0;
 var ENEMY = exports.ENEMY = 1 << 1;
 var PLAYER = exports.PLAYER = 1 << 2;
-
 var rng = exports.rng = new _Random2.default(RANDOM_SEED);
-
-var textures = exports.textures = {};
 
 var actors = exports.actors = {
   player: null
+};
+
+var camera = exports.camera = {
+  x: 0,
+  y: 0,
+  threshold: 20,
+  offset: 180,
+  rotation: 0,
+  target: null,
+  trauma: 0
 };
 
 var app = exports.app = new PIXI.Application({
@@ -43511,11 +46618,17 @@ var grid = exports.grid = new _Grid2.default();
 function onresize() {
   app.view.width = window.innerWidth;
   app.view.height = window.innerHeight;
+  stage.position.x = app.view.width / 2;
+  stage.position.y = app.view.height / 2;
+  stage.scale.x = 1.5;
+  stage.scale.y = 1.5;
 }
+
+onresize();
 
 window.addEventListener('resize', onresize);
 
-},{"../../Grid.js":193,"../../Random.js":198,"pixi.js":124}],207:[function(require,module,exports){
+},{"../../Grid.js":194,"../../Random.js":199,"pixi.js":125}],209:[function(require,module,exports){
 'use strict';
 
 var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
@@ -43756,11 +46869,10 @@ _Game2.default.defineSystems({
             var impactX = Math.cos(impactAngle);
             var impactY = Math.sin(impactAngle);
 
-            t1.x -= impactX * (depth / 2);
-            t1.y -= impactX * (depth / 2);
-
-            t2.x += impactX * (depth / 2);
-            t2.y += impactY * (depth / 2);
+            t1.x -= impactX * (depth / 6);
+            t1.y -= impactX * (depth / 6);
+            t2.x += impactX * (depth / 6);
+            t2.y += impactY * (depth / 6);
 
             // f2.x += v1.x;
             // f2.y += v1.y;
@@ -43875,10 +46987,168 @@ _Game2.default.defineSystems({
         e.release();
       }
     }
+  },
+
+  camera: {
+    run: function run() {
+      var x1 = _shared.camera.x,
+          y1 = _shared.camera.y,
+          target = _shared.camera.target,
+          threshold = _shared.camera.threshold,
+          offset = _shared.camera.offset;
+
+
+      _shared.stage.pivot.x = x1;
+      _shared.stage.pivot.y = y1;
+
+      var orientation = target.state.orientation;
+      var _target$transform = target.transform,
+          x2 = _target$transform.x,
+          y2 = _target$transform.y;
+
+
+      switch (orientation) {
+        case 'right':
+          x2 += offset;
+          break;
+        case 'left':
+          x2 -= offset;
+          break;
+        case 'up':
+          y2 -= offset;
+          break;
+        case 'down':
+          y2 += offset;
+          break;
+      }
+
+      var dx = x2 - x1;
+      var cx = Math.abs(dx) > threshold ? 0.02 : 0.01;
+
+      var dy = y2 - y1;
+      var cy = Math.abs(dy) > threshold ? 0.02 : 0.01;
+
+      _shared.camera.x += dx * cx;
+      _shared.camera.y += dy * cy;
+    }
   }
 });
 
-},{"../../Game":192,"../../Math.js":196,"./actors":201,"./components":202,"./shared":206}],208:[function(require,module,exports){
+},{"../../Game":193,"../../Math.js":197,"./actors":202,"./components":204,"./shared":208}],210:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.world = undefined;
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+exports.loadMap = loadMap;
+
+var _Game = require('../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var TILE_SIZE = 32;
+
+var Map = function () {
+  function Map(grid, tileset, legend) {
+    var tileSize = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : TILE_SIZE;
+
+    _classCallCheck(this, Map);
+
+    this.grid = grid;
+    this.tileset = tileset;
+    this.legend = legend;
+    this.tileSize = tileSize;
+    this.tiles = [];
+  }
+
+  _createClass(Map, [{
+    key: 'makeTile',
+    value: function makeTile(id) {
+      var index = this.legend ? this.legend[id] : id;
+      var texture = this.tiles[index];
+      var tile = _Game2.default.createEntity();
+      tile.sprite = {
+        texture: texture,
+        anchorX: 0,
+        anchorY: 0,
+        scaleX: 1,
+        scaleY: 1
+      };
+      return tile;
+    }
+  }, {
+    key: 'load',
+    value: function load() {
+      var height = this.grid.length;
+      var width = this.grid[0].width;
+
+      world.height = height * this.tileSize;
+      world.width = width * this.tileSize;
+      world.tileSize = this.tileSize;
+
+      for (var y = 0; y < height; y++) {
+        var row = [];
+        this.tiles.push(row);
+
+        for (var x = 0; x < width; x++) {
+          var tile = this.makeTile(this.grid[y][x]);
+
+          tile.transform = {
+            x: x * this.tileSize,
+            y: y * this.tileSize
+          };
+        }
+      }
+    }
+  }]);
+
+  return Map;
+}();
+
+var world = exports.world = {
+  tileSize: 32,
+  width: 0,
+  height: 0,
+  tiles: []
+};
+
+function loadMap(map, tileset) {
+  var tileSize = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : TILE_SIZE;
+
+  var height = map.length;
+  var width = map[0].length;
+
+  world.width = width * TILE_SIZE;
+  world.height = height * TILE_SIZE;
+  world.tileSize = tileSize;
+
+  for (var y = 0; y < map.length; y++) {
+    var row = map[y];
+
+    for (var x = 0; x < row.length; x++) {
+      var texture = tileset[row[x]];
+      var tile = _Game2.default.createEntity();
+      tile.transform = { x: x * tileSize, y: y * tileSize };
+      tile.sprite = {
+        texture: texture,
+        anchorX: 0,
+        anchorY: 0,
+        scaleX: 1,
+        scaleY: 1
+      };
+    }
+  }
+}
+
+},{"../../Game":193}],211:[function(require,module,exports){
 'use strict';
 
 var _demo = require('./demos/demo3');
@@ -43909,4 +47179,4 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // console.log(g.query(e1));
 // console.log(g.query(e2));
 
-},{"./demos/demo3":203}]},{},[208]);
+},{"./demos/demo3":205}]},{},[211]);
