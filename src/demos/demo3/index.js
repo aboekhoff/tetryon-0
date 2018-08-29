@@ -15,7 +15,7 @@ export default function start() {
     theme.once('load', () => theme.play());
     loadTiledMap('map2');
     const player = makePlayer(66 * 16, 48 * 16);
-    for (let i = 0; i < 100; i++) { makeEnemy(66 * 16, 42 * 16); }
+    for (let i = 0; i < 24; i++) { makeEnemy(66 * 16, 42 * 16); }
     
     camera.target = player;
     camera.x = player.transform.x;

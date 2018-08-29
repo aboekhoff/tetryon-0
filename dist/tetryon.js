@@ -46523,7 +46523,7 @@ function start() {
     });
     (0, _world.loadTiledMap)('map2');
     var player = (0, _actors.makePlayer)(66 * 16, 48 * 16);
-    for (var i = 0; i < 100; i++) {
+    for (var i = 0; i < 24; i++) {
       (0, _actors.makeEnemy)(66 * 16, 42 * 16);
     }
 
