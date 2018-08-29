@@ -8,7 +8,13 @@ export default Game.defineComponents({
   Duration: { time: 0 },
   Orientation: { direction: 'right' },
   Reference: { id: null },
-  TargetControl: { targetId: null },
+  TargetControl: { 
+    targetId: null,
+    state: 'seek',
+    path: null,
+    timer: 0,
+    thinkTime: 2000,
+  },
   Effect: {
     targetId: null,
     component: null,

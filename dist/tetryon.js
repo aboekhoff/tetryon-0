@@ -45156,9 +45156,9 @@ var Grid = function () {
     _classCallCheck(this, Grid);
 
     var _config$cellWidth = config.cellWidth,
-        cellWidth = _config$cellWidth === undefined ? 16 : _config$cellWidth,
+        cellWidth = _config$cellWidth === undefined ? 64 : _config$cellWidth,
         _config$cellHeight = config.cellHeight,
-        cellHeight = _config$cellHeight === undefined ? 16 : _config$cellHeight;
+        cellHeight = _config$cellHeight === undefined ? 64 : _config$cellHeight;
 
     this.index = new Map();
     this.cells = new Map();
@@ -45740,6 +45740,7 @@ exports.clamp = clamp;
 exports.wrap = wrap;
 exports.wrapRotation = wrapRotation;
 exports.turningAngle = turningAngle;
+exports.intersects = intersects;
 var PI = exports.PI = Math.PI;
 var TAU = exports.TAU = Math.PI * 2;
 
@@ -45796,6 +45797,20 @@ function turningAngle(start, target) {
   } else {
     return theta + TAU;
   }
+}
+
+function intersects(sprite1, sprite2) {
+  var w1 = sprite1.width / 2;
+  var w2 = sprite2.width / 2;
+  var h1 = sprite1.height / 2;
+  var h2 = sprite2.height / 2;
+
+  var a = sprite1.x + w1 < sprite2.x - w2;
+  var b = sprite1.x - w1 > sprite2.x + w2;
+  var c = sprite1.y + h1 < sprite2.y - h2;
+  var d = sprite1.y - h1 > sprite2.y + h2;
+
+  return !(a || b || c || d);
 }
 
 },{}],198:[function(require,module,exports){
@@ -46112,8 +46127,8 @@ function makeExplosion(x, y) {
     p.duration = { time: duration };
     p.sprite = {
       texture: _resources.textures.particles.particle3,
-      scaleX: 0.01,
-      scaleY: 0.01
+      scaleX: 0.005,
+      scaleY: 0.005
     };
   }
 }
@@ -46148,25 +46163,25 @@ function makeEnemy(x, y, avatar) {
 
   e.transform = { x: x, y: y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.25 };
+  e.velocity = { x: 0, y: 0, drag: 0.5 };
   e.state = { orientation: 'down', moving: false }, e.targetControl = {};
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations(avatar);
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 2, scaleY: 2 };
+  e.sprite = { scaleX: 1, scaleY: 1 };
   e.collider = { type: _shared.ENEMY };
 }
 
 function makePlayer(x, y, avatar) {
   var e = _Game2.default.createEntity();
 
-  e.transform = { x: _world.world.width / 2, y: _world.world.width / 2, rotation: 0 };
+  e.transform = { x: x, y: y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.24 };
+  e.velocity = { x: 0, y: 0, drag: 0.4 };
   e.state = { orientation: 'down', moving: false }, e.steeringControl = {};
   e.animationControl = makeHumanAnimations('ninja1');
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 2, scaleY: 2 };
+  e.sprite = { scaleX: 1, scaleY: 1 };
   e.sprite._sprite.texture = e.animation.data.frames[0];
   e.collider = { type: _shared.PLAYER };
 
@@ -46176,7 +46191,145 @@ function makePlayer(x, y, avatar) {
   return e;
 }
 
-},{"../../Game":193,"./resources":207,"./shared":208,"./world":210}],203:[function(require,module,exports){
+},{"../../Game":193,"./resources":208,"./shared":209,"./world":211}],203:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
+exports.astar = astar;
+
+var _world = require("./world");
+
+var _Math = require("../../Math");
+
+var floor = Math.floor;
+
+
+function nodeDistance(a, b) {
+  return (0, _Math.dist)(a.x, a.y, b.x, b.y);
+}
+
+function getNeighbors(start, nodes) {
+  var neighbors = [];
+  var xs = [0, -1, 1, 0];
+  var ys = [-1, 0, 0, 1];
+
+  for (var i = 0; i < xs.length; i++) {
+    var dx = xs[i];
+    var dy = ys[i];
+    var x = start.x + dx;
+    var y = start.y + dy;
+    var key = x + ":" + y;
+    var node = nodes[key];
+    if (node) {
+      neighbors.push(node);
+    }
+  }
+
+  return neighbors;
+}
+
+function reconstructPath(cameFrom, current) {
+  var totalPath = [current];
+
+  while (cameFrom.has(current)) {
+    current = cameFrom.get(current);
+    totalPath.push(current);
+  }
+
+  totalPath.pop();
+  return totalPath.reverse();
+}
+
+function astar(startTransform, goalTransform) {
+  var tileSize = _world.world.tileSize,
+      graph = _world.world.graph;
+
+  var nodes = _world.world.graph.nodes;
+
+  var startX = floor(startTransform.x / tileSize);
+  var startY = floor(startTransform.y / tileSize);
+  var startKey = startX + ":" + startY;
+  var startNode = nodes[startKey];
+
+  var goalX = floor(goalTransform.x / tileSize);
+  var goalY = floor(goalTransform.y / tileSize);
+  var goalKey = goalX + ":" + goalY;
+  var goalNode = nodes[goalKey];
+
+  console.log(startNode, goalNode);
+
+  return _astar(startNode, goalNode, graph.nodes);
+}
+
+function _astar(start, goal, nodes) {
+  var heuristic = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : nodeDistance;
+
+  var closedSet = new Set();
+  var openSet = [start];
+  var cameFrom = new Map();
+  var gScore = new Map();
+  var fScore = new Map();
+
+  gScore.set(start, 0);
+
+  function get(map, node) {
+    var value = map.get(node);
+    return value == null ? Infinity : value;
+  }
+
+  fScore.set(start, heuristic(start, goal));
+
+  var _loop = function _loop() {
+    openSet.sort(function (a, b) {
+      var x = get(fScore, a);
+      var y = get(fScore, b);
+      return y - x;
+    });
+
+    var current = openSet.pop();
+
+    if (current === goal) {
+      return {
+        v: reconstructPath(cameFrom, current)
+      };
+    }
+
+    closedSet.add(current);
+
+    getNeighbors(current, nodes).forEach(function (neighbor) {
+      if (closedSet.has(neighbor)) {
+        return;
+      }
+
+      var tentativeGScore = get(gScore, current) + nodeDistance(current, neighbor);
+
+      if (openSet.indexOf(neighbor) === -1) {
+        openSet.push(neighbor);
+      } else if (tentativeGScore >= gScore.get(neighbor)) {
+        return;
+      }
+
+      cameFrom.set(neighbor, current);
+      gScore.set(neighbor, tentativeGScore);
+      fScore.set(neighbor, get(gScore, neighbor) + heuristic(neighbor, goal));
+    });
+  };
+
+  while (openSet.length > 0) {
+    var _ret = _loop();
+
+    if ((typeof _ret === "undefined" ? "undefined" : _typeof(_ret)) === "object") return _ret.v;
+  }
+
+  return null;
+}
+
+},{"../../Math":197,"./world":211}],204:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46193,7 +46346,7 @@ var theme = exports.theme = new _howler.Howl({
   volume: 0.5
 });
 
-},{"howler":9}],204:[function(require,module,exports){
+},{"howler":9}],205:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46215,7 +46368,13 @@ exports.default = _Game2.default.defineComponents({
   Duration: { time: 0 },
   Orientation: { direction: 'right' },
   Reference: { id: null },
-  TargetControl: { targetId: null },
+  TargetControl: {
+    targetId: null,
+    state: 'seek',
+    path: null,
+    timer: 0,
+    thinkTime: 2000
+  },
   Effect: {
     targetId: null,
     component: null,
@@ -46325,7 +46484,7 @@ exports.default = _Game2.default.defineComponents({
   }]
 });
 
-},{"../../Game.js":193,"./shared.js":208}],205:[function(require,module,exports){
+},{"../../Game.js":193,"./shared.js":209}],206:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46362,12 +46521,15 @@ function start() {
     _audio.theme.once('load', function () {
       return _audio.theme.play();
     });
-    (0, _world.loadMap)(_resources.maps.map1, _resources.textures.dungeon);
-    var player = (0, _actors.makePlayer)();
-    for (var i = 0; i < 4; i++) {
-      (0, _actors.makeEnemy)();
+    (0, _world.loadTiledMap)('map2');
+    var player = (0, _actors.makePlayer)(66 * 16, 48 * 16);
+    for (var i = 0; i < 100; i++) {
+      (0, _actors.makeEnemy)(66 * 16, 42 * 16);
     }
+
     _shared.camera.target = player;
+    _shared.camera.x = player.transform.x;
+    _shared.camera.y = player.transform.y;
 
     _Game2.default.init();
     // run these systems immediately to render starting state
@@ -46378,7 +46540,7 @@ function start() {
   });
 }
 
-},{"../../Game.js":193,"./actors":202,"./audio":203,"./components":204,"./input":206,"./resources":207,"./shared":208,"./systems":209,"./world":210}],206:[function(require,module,exports){
+},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./input":207,"./resources":208,"./shared":209,"./systems":210,"./world":211}],207:[function(require,module,exports){
 'use strict';
 
 var _Game = require('../../Game');
@@ -46395,7 +46557,7 @@ _Game2.default.input.addButton('up', _Input.KEYS.UP);
 _Game2.default.input.addButton('down', _Input.KEYS.DOWN);
 _Game2.default.input.addButton('fire', _Input.KEYS.SPACE);
 
-},{"../../Game":193,"../../Input":195}],207:[function(require,module,exports){
+},{"../../Game":193,"../../Input":195}],208:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46410,6 +46572,33 @@ var PIXI = _interopRequireWildcard(_pixi);
 
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
+function enqueue(object) {
+  Object.keys(object).forEach(function (key) {
+    PIXI.loader.add(key, object[key]);
+  });
+}
+
+var TILE_ASSETS = {
+  dungeon_1: 'assets/maps/tiles_dungeon_1.png',
+  dungeon_2: 'assets/maps/tiles_dungeon_2.png'
+};
+
+var TILE_DATA_ASSETS = {
+  dungeon_1_data: 'assets/maps/tiles_dungeon_1.json'
+};
+
+var MAP_ASSETS = {
+  map1: 'assets/maps/map1.txt',
+  map2: 'assets/maps/map2.json'
+};
+
+var TILED_MAPS = {
+  map2: {
+    tiles: 'dungeon_2',
+    json: 'map2'
+  }
+};
+
 var PARTICLES = ['particle1', 'particle2', 'particle3'];
 
 var HUMANS = ['adventurer_f', 'adventurer_m', 'cleric', 'fighter', 'guard', 'hunter', 'knight', 'mage', 'ninja', 'oldman', 'rogue', 'templar', 'thief', 'warrior', 'wizard'];
@@ -46422,7 +46611,7 @@ var textures = exports.textures = {
   humans: {},
   monsters: {},
   particles: {},
-  dungeon: []
+  tiles: {}
 };
 
 var maps = exports.maps = {};
@@ -46493,33 +46682,31 @@ function processParticleAssets() {
   });
 }
 
-function enqueueDungeonAssets() {
-  PIXI.loader.add('dungeon', 'assets/tiles/dungeon_tileset_32.png');
+function enqueueTileAssets() {
+  enqueue(TILE_ASSETS);
 }
 
 // using the 32 x 32 dungeon tile set
-function processDungeonAssets() {
+function processTileAssets() {
   var SIZE = 32;
 
-  var resource = PIXI.loader.resources['dungeon'];
-  var baseTexture = resource.texture.baseTexture;
+  Object.keys(TILE_ASSETS).forEach(function (key) {
+    var resource = PIXI.loader.resources[key];
+    var baseTexture = resource.texture.baseTexture;
 
-  for (var y = 0; y < baseTexture.height; y += SIZE) {
-    for (var x = 0; x < baseTexture.width; x += SIZE) {
-      var rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
-      var texture = new PIXI.Texture(baseTexture, rectangle);
-      textures.dungeon.push(texture);
+    textures.tiles[key] = [];
+
+    for (var y = 0; y < baseTexture.height; y += SIZE) {
+      for (var x = 0; x < baseTexture.width; x += SIZE) {
+        var rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
+        var texture = new PIXI.Texture(baseTexture, rectangle);
+        textures.tiles[key].push(texture);
+      }
     }
-  }
+  });
 }
 
 var MAPS = ['map1'];
-
-function enqueueMapAssets() {
-  MAPS.forEach(function (map) {
-    PIXI.loader.add(map, 'assets/maps/' + map + '.txt');
-  });
-}
 
 function processMapAssets() {
   MAPS.forEach(function (map) {
@@ -46533,22 +46720,23 @@ function processMapAssets() {
     });
     maps[map] = grid;
   });
-
-  console.log(maps);
 }
 
 function load(callback) {
   enqueueHumanAssets();
   enqueueParticleAssets();
-  enqueueDungeonAssets();
-  enqueueMapAssets();
+  enqueue(TILE_ASSETS);
+  enqueue(TILE_DATA_ASSETS);
+  enqueue(MAP_ASSETS);
 
   PIXI.loader.load(function (loader, resources) {
     processHumanAssets();
     processParticleAssets();
-    processDungeonAssets();
+    processTileAssets();
     processMapAssets();
     console.log(textures);
+    console.log(resources.map2);
+    console.log(resources.dungeon_1_data);
     if (callback) {
       callback();
     }
@@ -46557,7 +46745,7 @@ function load(callback) {
 
 var callbacks = [];
 
-},{"pixi.js":125}],208:[function(require,module,exports){
+},{"pixi.js":125}],209:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46597,8 +46785,8 @@ var actors = exports.actors = {
 var camera = exports.camera = {
   x: 0,
   y: 0,
-  threshold: 20,
-  offset: 180,
+  threshold: 10,
+  offset: 20,
   rotation: 0,
   target: null,
   trauma: 0
@@ -46620,15 +46808,15 @@ function onresize() {
   app.view.height = window.innerHeight;
   stage.position.x = app.view.width / 2;
   stage.position.y = app.view.height / 2;
-  stage.scale.x = 1.5;
-  stage.scale.y = 1.5;
+  stage.scale.x = 3;
+  stage.scale.y = 3;
 }
 
 onresize();
 
 window.addEventListener('resize', onresize);
 
-},{"../../Grid.js":194,"../../Random.js":199,"pixi.js":125}],209:[function(require,module,exports){
+},{"../../Grid.js":194,"../../Random.js":199,"pixi.js":125}],210:[function(require,module,exports){
 'use strict';
 
 var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
@@ -46646,6 +46834,10 @@ var _shared = require('./shared');
 var _Math = require('../../Math.js');
 
 var _actors = require('./actors');
+
+var _astar = require('./astar');
+
+var _resources = require('./resources');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -46706,42 +46898,97 @@ _Game2.default.defineSystems({
 
   targetControl: {
     components: [TargetControl, Transform, SteeringControl],
+    showPath: false,
 
     each: function each(e) {
-      var _e$transform = e.transform,
-          x1 = _e$transform.x,
-          y1 = _e$transform.y;
-      var _actors$player$transf = _shared.actors.player.transform,
-          x2 = _actors$player$transf.x,
-          y2 = _actors$player$transf.y;
+      e.targetControl.timer -= _Game2.default.timer.delta;
 
-      var d = (0, _Math.dist)(x1, y1, x2, y2);
+      if (e.targetControl.timer <= 0) {
+        e.targetControl.timer = e.targetControl.thinkTime;
+        e.targetControl.path = (0, _astar.astar)({
+          x: e.transform.x + 8,
+          y: e.transform.y + 8
+        }, {
+          x: _shared.actors.player.transform.x + 8,
+          y: _shared.actors.player.transform.y + 8
+        });
+      }
+
+      if (e.targetControl.path == null) {
+        return;
+      }
+
+      while (e.targetControl.path.length) {
+        var _target = e.targetControl.path[0];
+
+        var _e$transform = e.transform,
+            _x = _e$transform.x,
+            _y = _e$transform.y;
+
+        var _x2 = _target.x * 16;
+        var _y2 = _target.y * 16;
+
+        if ((0, _Math.dist)(_x, _y, _x2, _y2) < 8) {
+          e.targetControl.path.shift();
+        } else {
+          break;
+        }
+      }
+
+      if (this.showPath) {
+        e.targetControl.path.forEach(function (node) {
+          var e = _Game2.default.createEntity();
+
+          e.transform = {
+            x: node.x * 16,
+            y: node.y * 16
+          };
+
+          e.sprite = {
+            texture: _resources.textures.particles.particle2,
+            scaleX: 0.01,
+            scaleY: 0.01
+          };
+
+          e.duration = {
+            time: 100
+          };
+        });
+      }
+
+      var target = e.targetControl.path[0];
+
+      if (!target) {
+        return;
+      }
+
+      var _e$transform2 = e.transform,
+          x1 = _e$transform2.x,
+          y1 = _e$transform2.y;
+
+      var x2 = target.x * 16;
+      var y2 = target.y * 16;
+
+      var theta = (0, _Math.angleBetween)(x1, y1, x2, y2);
+
+      var dx = Math.cos(theta);
+      var dy = Math.sin(theta);
 
       e.steeringControl.right = false;
       e.steeringControl.left = false;
       e.steeringControl.up = false;
       e.steeringControl.down = false;
 
-      if (d > 50) {
-        var targetAngle = (0, _Math.angleBetween)(x1, y1, x2, y2);
-        var targetX = Math.cos(targetAngle);
-        var targetY = Math.sin(targetAngle);
-        var absX = Math.abs(targetX);
-        var absY = Math.abs(targetY);
+      if (dx > 0) {
+        e.steeringControl.right = true;
+      } else if (dx < 0) {
+        e.steeringControl.left = true;
+      }
 
-        if (absX >= absY) {
-          if (targetX > 0) {
-            e.steeringControl.right = true;
-          } else {
-            e.steeringControl.left = true;
-          }
-        } else {
-          if (targetY > 0) {
-            e.steeringControl.down = true;
-          } else {
-            e.steeringControl.up = true;
-          }
-        }
+      if (dy > 0) {
+        e.steeringControl.down = true;
+      } else if (dy < 0) {
+        e.steeringControl.up = true;
       }
     }
   },
@@ -46809,9 +47056,9 @@ _Game2.default.defineSystems({
     destroyList: new Set(),
 
     each: function each(e) {
-      var _e$transform2 = e.transform,
-          x = _e$transform2.x,
-          y = _e$transform2.y;
+      var _e$transform3 = e.transform,
+          x = _e$transform3.x,
+          y = _e$transform3.y;
       var _e$sprite$_sprite = e.sprite._sprite,
           w = _e$sprite$_sprite.width,
           h = _e$sprite$_sprite.height;
@@ -46828,6 +47075,64 @@ _Game2.default.defineSystems({
 
         var e1 = _Game2.default.getEntity(eid1);
         var e2 = _Game2.default.getEntity(eid2);
+
+        if (!(0, _Math.intersects)(e1.sprite._sprite, e2.sprite._sprite)) {
+          return;
+        }
+
+        if (e1.collider.static && e2.collider.static) {
+          return;
+        }
+
+        if (e1.collider.static || e2.collider.static) {
+          var staticObject = void 0,
+              dynamicObject = void 0;
+
+          if (e1.collider.static) {
+            staticObject = e1;
+            dynamicObject = e2;
+          }
+
+          if (e2.collider.static) {
+            staticObject = e2;
+            dynamicObject = e1;
+          }
+
+          var ds = dynamicObject.sprite._sprite;
+          var ss = staticObject.sprite._sprite;
+
+          var dw = ds.width,
+              dh = ds.height;
+          var sw = ss.width,
+              sh = ss.height;
+          var _dynamicObject$transf = dynamicObject.transform,
+              _x3 = _dynamicObject$transf.x,
+              _y3 = _dynamicObject$transf.y;
+          var _staticObject$transfo = staticObject.transform,
+              _x4 = _staticObject$transfo.x,
+              _y4 = _staticObject$transfo.y;
+
+
+          var a = _x3 + dw / 2 < _x4 - sw / 2;
+          var b = _x3 - dw / 2 > _x4 + sw / 2;
+          var c = _y3 + dh / 2 < _y4 - sh / 2;
+          var _d = _y3 - dh / 2 > _y4 + sh / 2;
+
+          if (Math.abs(_x3 - _x4) >= Math.abs(_y3 - _y4)) {
+            dynamicObject.transform.x = _x3 < _x4 ? _x4 - sw / 2 - dw / 2 : _x4 + sw / 2 + dw / 2;
+            dynamicObject.velocity.x *= -1;
+          } else {
+            dynamicObject.transform.y = _y3 < _y4 ? _y4 - sh / 2 - dh / 2 : _y4 + sh / 2 + dh / 2;
+            dynamicObject.velocity.y *= -1;
+          }
+
+          if (dynamicObject.collider.type === _shared.BULLET) {
+            (0, _actors.makeExplosion)(dynamicObject.transform.x, dynamicObject.transform.y);
+            _this.destroyList.add(dynamicObject);
+          }
+
+          return;
+        }
 
         var t1 = e1.transform;
         var t2 = e2.transform;
@@ -46846,7 +47151,6 @@ _Game2.default.defineSystems({
         var s2 = e2.sprite._sprite.width / 2;
 
         var d = (0, _Math.dist)(x1, y1, x2, y2);
-
         var depth = s1 + s2 - d;
 
         var dt = game.timer.delta;
@@ -46855,6 +47159,28 @@ _Game2.default.defineSystems({
           var bulletEnemy = _shared.BULLET ^ _shared.ENEMY;
           var playerEnemy = _shared.PLAYER ^ _shared.ENEMY;
           var collisionType = e1.collider.type ^ e2.collider.type;
+
+          var _staticObject = void 0,
+              _dynamicObject = void 0;
+
+          if (e1.collider.static || e2.collider.static) {
+            if (e1.collider.static) {
+              _staticObject = e1;
+              _dynamicObject = e2;
+            }
+
+            if (e2.collider.static) {
+              _staticObject = e2;
+              _dynamicObject = e1;
+            }
+
+            var dx = _dynamicObject.transform.x - _staticObject.transform.x;
+            var dy = _dynamicObject.transform.y - _staticObject.transform.y;
+
+            _dynamicObject.transform.x += dx * 0.25;
+            _dynamicObject.transform.y += dy * 0.25;
+            return;
+          }
 
           if (collisionType === bulletEnemy) {
             _this.destroyList.add(e1);
@@ -46957,10 +47283,10 @@ _Game2.default.defineSystems({
     components: [Transform, Sprite],
 
     each: function each(e) {
-      var _e$transform3 = e.transform,
-          x = _e$transform3.x,
-          y = _e$transform3.y,
-          scale = _e$transform3.scale;
+      var _e$transform4 = e.transform,
+          x = _e$transform4.x,
+          y = _e$transform4.y,
+          scale = _e$transform4.scale;
       var _e$sprite = e.sprite,
           anchorX = _e$sprite.anchorX,
           anchorY = _e$sprite.anchorY,
@@ -47023,18 +47349,14 @@ _Game2.default.defineSystems({
       }
 
       var dx = x2 - x1;
-      var cx = Math.abs(dx) > threshold ? 0.02 : 0.01;
-
       var dy = y2 - y1;
-      var cy = Math.abs(dy) > threshold ? 0.02 : 0.01;
-
-      _shared.camera.x += dx * cx;
-      _shared.camera.y += dy * cy;
+      _shared.camera.x += dx / threshold * 0.15;
+      _shared.camera.y += dy / threshold * 0.15;
     }
   }
 });
 
-},{"../../Game":193,"../../Math.js":197,"./actors":202,"./components":204,"./shared":208}],210:[function(require,module,exports){
+},{"../../Game":193,"../../Math.js":197,"./actors":202,"./astar":203,"./components":205,"./resources":208,"./shared":209}],211:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47044,11 +47366,15 @@ exports.world = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+exports.getPathNodesFromMap = getPathNodesFromMap;
+exports.loadTiledMap = loadTiledMap;
 exports.loadMap = loadMap;
 
 var _Game = require('../../Game');
 
 var _Game2 = _interopRequireDefault(_Game);
+
+var _resources = require('./resources');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -47056,69 +47382,141 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 var TILE_SIZE = 32;
 
-var Map = function () {
-  function Map(grid, tileset, legend) {
-    var tileSize = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : TILE_SIZE;
-
-    _classCallCheck(this, Map);
-
-    this.grid = grid;
-    this.tileset = tileset;
-    this.legend = legend;
-    this.tileSize = tileSize;
-    this.tiles = [];
-  }
-
-  _createClass(Map, [{
-    key: 'makeTile',
-    value: function makeTile(id) {
-      var index = this.legend ? this.legend[id] : id;
-      var texture = this.tiles[index];
-      var tile = _Game2.default.createEntity();
-      tile.sprite = {
-        texture: texture,
-        anchorX: 0,
-        anchorY: 0,
-        scaleX: 1,
-        scaleY: 1
-      };
-      return tile;
-    }
-  }, {
-    key: 'load',
-    value: function load() {
-      var height = this.grid.length;
-      var width = this.grid[0].width;
-
-      world.height = height * this.tileSize;
-      world.width = width * this.tileSize;
-      world.tileSize = this.tileSize;
-
-      for (var y = 0; y < height; y++) {
-        var row = [];
-        this.tiles.push(row);
-
-        for (var x = 0; x < width; x++) {
-          var tile = this.makeTile(this.grid[y][x]);
-
-          tile.transform = {
-            x: x * this.tileSize,
-            y: y * this.tileSize
-          };
-        }
-      }
-    }
-  }]);
-
-  return Map;
-}();
-
-var world = exports.world = {
+var world = exports.world = window.world = {
   tileSize: 32,
   width: 0,
   height: 0,
-  tiles: []
+  tiles: [],
+  graph: null
 };
+
+var Node = function () {
+  function Node(x, y) {
+    _classCallCheck(this, Node);
+
+    this.x = x;
+    this.y = y;
+    this.key = x + ':' + y;
+  }
+
+  _createClass(Node, [{
+    key: 'toString',
+    value: function toString() {
+      return this.key;
+    }
+  }]);
+
+  return Node;
+}();
+
+function getPathNodesFromMap(tiledMap) {
+  var nodes = {};
+
+  var layers = tiledMap.layers,
+      tilesets = tiledMap.tilesets,
+      width = tiledMap.width,
+      height = tiledMap.height;
+
+  var tileData = PIXI.loader.resources[tilesets[0].image + '_data'].data;
+
+  layers.forEach(function (layer) {
+    var data = layer.data;
+    for (var i = 0; i < data.length; i++) {
+      var id = layer.data[i];
+
+      if (!id) {
+        continue;
+      }
+
+      var type = tileData.tiles[id - 1].type;
+
+      var y = Math.floor(i / height);
+      var x = i % width;
+      var key = x + ':' + y;
+
+      if (type !== 'floor') {
+        nodes[key] = false;
+      }
+
+      if (nodes[key] === false) {
+        continue;
+      }
+
+      nodes[key] = new Node(x, y);
+    }
+  });
+
+  return {
+    nodes: nodes,
+    width: width,
+    height: height
+  };
+}
+
+function loadTiledMap(name) {
+  var tiledMap = PIXI.loader.resources[name].data;
+  world.graph = getPathNodesFromMap(tiledMap);
+
+  var layers = tiledMap.layers,
+      tilesets = tiledMap.tilesets,
+      width = tiledMap.width,
+      height = tiledMap.height,
+      tilewidth = tiledMap.tilewidth,
+      tileheight = tiledMap.tileheight;
+
+
+  world.width = width * tilewidth;
+  world.height = height * tileheight;
+  world.tileSize = tilewidth;
+
+  var tileset = tilesets[0];
+  var tileData = PIXI.loader.resources[tileset.image + '_data'].data;
+  var baseTexture = PIXI.loader.resources[tileset.image].texture.baseTexture;
+
+  baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+  var tiles = [];
+
+  for (var y = 0; y < baseTexture.height; y += tileheight) {
+    for (var x = 0; x < baseTexture.width; x += tilewidth) {
+      var rectangle = new PIXI.Rectangle(x, y, tilewidth, tileheight);
+      var texture = new PIXI.Texture(baseTexture, rectangle);
+      tiles.push(texture);
+    }
+  }
+
+  layers.forEach(function (layer) {
+    for (var i = 0; i < layer.data.length; i++) {
+      var id = layer.data[i];
+
+      if (id) {
+        var _y = Math.floor(i / height);
+        var _x = i % width;
+
+        var _texture = tiles[id - 1];
+        var tile = _Game2.default.createEntity();
+        var type = tileData.tiles[id - 1].type;
+
+
+        tile.transform = {
+          x: _x * tilewidth,
+          y: _y * tileheight
+        };
+
+        tile.sprite = {
+          texture: _texture,
+          anchorX: 0.5,
+          anchorY: 0.5,
+          scaleX: 1,
+          scaleY: 1
+        };
+
+        if (type !== 'floor') {
+          tile.collider = { type: type, static: true };
+        }
+      }
+    }
+  });
+}
 
 function loadMap(map, tileset) {
   var tileSize = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : TILE_SIZE;
@@ -47139,8 +47537,8 @@ function loadMap(map, tileset) {
       tile.transform = { x: x * tileSize, y: y * tileSize };
       tile.sprite = {
         texture: texture,
-        anchorX: 0,
-        anchorY: 0,
+        anchorX: 0.5,
+        anchorY: 0.5,
         scaleX: 1,
         scaleY: 1
       };
@@ -47148,7 +47546,7 @@ function loadMap(map, tileset) {
   }
 }
 
-},{"../../Game":193}],211:[function(require,module,exports){
+},{"../../Game":193,"./resources":208}],212:[function(require,module,exports){
 'use strict';
 
 var _demo = require('./demos/demo3');
@@ -47179,4 +47577,4 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // console.log(g.query(e1));
 // console.log(g.query(e2));
 
-},{"./demos/demo3":205}]},{},[211]);
+},{"./demos/demo3":206}]},{},[212]);

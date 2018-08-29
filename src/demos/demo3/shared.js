@@ -18,8 +18,8 @@ export const actors = {
 export const camera = { 
   x: 0, 
   y: 0, 
-  threshold: 20,
-  offset: 180,
+  threshold: 10,
+  offset: 20,
   rotation: 0,
   target: null, 
   trauma: 0 
@@ -41,8 +41,8 @@ function onresize() {
   app.view.height = window.innerHeight;
   stage.position.x = app.view.width / 2;
   stage.position.y = app.view.height / 2;
-  stage.scale.x = 1.5;
-  stage.scale.y = 1.5;
+  stage.scale.x = 3;
+  stage.scale.y = 3;
 }
 
 onresize();

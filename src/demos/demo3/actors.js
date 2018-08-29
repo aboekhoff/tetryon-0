@@ -49,8 +49,8 @@ export function makeExplosion(x, y) {
     p.duration = { time: duration };
     p.sprite = {
       texture: textures.particles.particle3,
-      scaleX: 0.01,
-      scaleY: 0.01,
+      scaleX: 0.005,
+      scaleY: 0.005,
     }
   }
 }
@@ -83,27 +83,27 @@ export function makeEnemy(x, y, avatar) {
 
   e.transform = { x, y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.25 };
+  e.velocity = { x: 0, y: 0, drag: 0.5 };
   e.state = { orientation: 'down', moving: false },
   e.targetControl = {};
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations(avatar);
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 2, scaleY: 2 };  
+  e.sprite = { scaleX: 1, scaleY: 1 };  
   e.collider = { type: ENEMY };
 }
 
 export function makePlayer(x, y, avatar) {
   const e = Game.createEntity();
 
-  e.transform = { x: world.width / 2, y: world.width / 2, rotation: 0 };
+  e.transform = { x, y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.24 };
+  e.velocity = { x: 0, y: 0, drag: 0.4 };
   e.state = { orientation: 'down', moving: false },
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations('ninja1');
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 2, scaleY: 2 };  
+  e.sprite = { scaleX: 1, scaleY: 1 };  
   e.sprite._sprite.texture = e.animation.data.frames[0];
   e.collider = { type: PLAYER };
 

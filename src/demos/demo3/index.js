@@ -2,7 +2,7 @@ import Game from '../../Game.js';
 import { makePlayer, makeEnemy } from './actors';
 import { load, maps, textures } from './resources';
 import { camera } from './shared';
-import { loadMap } from './world';
+import { loadTiledMap } from './world';
 import { theme } from './audio';
 import './components';
 import './systems';
@@ -13,10 +13,13 @@ window.game = Game;
 export default function start() {
   load(() => {
     theme.once('load', () => theme.play());
-    loadMap(maps.map1, textures.dungeon);
-    const player = makePlayer();
-    for (let i = 0; i < 4; i++) { makeEnemy(); }
+    loadTiledMap('map2');
+    const player = makePlayer(66 * 16, 48 * 16);
+    for (let i = 0; i < 100; i++) { makeEnemy(66 * 16, 42 * 16); }
+    
     camera.target = player;
+    camera.x = player.transform.x;
+    camera.y = player.transform.y;
 
     Game.init();
     // run these systems immediately to render starting state

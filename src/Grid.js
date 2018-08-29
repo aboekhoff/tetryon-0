@@ -6,7 +6,7 @@ function xy2k(x, y) {
 
 export default class Grid {
   constructor(config = {}) {
-    const { cellWidth = 16, cellHeight = 16 } = config;
+    const { cellWidth = 64, cellHeight = 64 } = config;
     this.index = new Map();
     this.cells = new Map();
     this.cellWidth = cellWidth;

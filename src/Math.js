@@ -47,3 +47,17 @@ export function turningAngle(start, target) {
     return theta + TAU;
   }
 }
+
+export function intersects(sprite1, sprite2) {
+  const w1 = sprite1.width / 2;
+  const w2 = sprite2.width / 2;
+  const h1 = sprite1.height / 2;
+  const h2 = sprite2.height / 2;
+
+  const a = (sprite1.x + w1) < (sprite2.x - w2); 
+  const b = (sprite1.x - w1) > (sprite2.x + w2);
+  const c = (sprite1.y + h1) < (sprite2.y - h2);
+  const d = (sprite1.y - h1) > (sprite2.y + h2);
+
+  return !(a || b || c || d);
+}

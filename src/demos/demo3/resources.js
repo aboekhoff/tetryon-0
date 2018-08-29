@@ -1,5 +1,32 @@
 import * as PIXI from 'pixi.js';
 
+function enqueue(object) {
+  Object.keys(object).forEach(key => {
+    PIXI.loader.add(key, object[key]);
+  });
+}
+
+const TILE_ASSETS = {
+  dungeon_1: 'assets/maps/tiles_dungeon_1.png',
+  dungeon_2: 'assets/maps/tiles_dungeon_2.png',
+};
+
+const TILE_DATA_ASSETS = {
+  dungeon_1_data: 'assets/maps/tiles_dungeon_1.json',
+};
+
+const MAP_ASSETS = {
+  map1: 'assets/maps/map1.txt',
+  map2: 'assets/maps/map2.json',
+};
+
+const TILED_MAPS = {
+  map2: {
+    tiles: 'dungeon_2',
+    json: 'map2',
+  }
+}
+
 const PARTICLES = [
   'particle1',
   'particle2',
@@ -36,7 +63,7 @@ export const textures = {
   humans: {},
   monsters: {},
   particles: {},
-  dungeon: [],
+  tiles: {},
 }
 
 export const maps = {
@@ -105,33 +132,31 @@ function processParticleAssets() {
   });
 }
 
-function enqueueDungeonAssets() {
-  PIXI.loader.add('dungeon', 'assets/tiles/dungeon_tileset_32.png');
+function enqueueTileAssets() {
+  enqueue(TILE_ASSETS);
 }
 
 // using the 32 x 32 dungeon tile set
-function processDungeonAssets() {
+function processTileAssets() {
   const SIZE = 32;
 
-  const resource = PIXI.loader.resources['dungeon'];
-  const baseTexture = resource.texture.baseTexture;
+  Object.keys(TILE_ASSETS).forEach(key => {
+    const resource = PIXI.loader.resources[key];
+    const baseTexture = resource.texture.baseTexture;
   
-  for (let y = 0; y < baseTexture.height; y += SIZE) {
-    for (let x = 0; x < baseTexture.width; x += SIZE) {
-      const rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
-      const texture = new PIXI.Texture(baseTexture, rectangle);
-      textures.dungeon.push(texture);
+    textures.tiles[key] = []
+
+    for (let y = 0; y < baseTexture.height; y += SIZE) {
+      for (let x = 0; x < baseTexture.width; x += SIZE) {
+        const rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
+        const texture = new PIXI.Texture(baseTexture, rectangle);
+        textures.tiles[key].push(texture);
+      }
     }
-  }
+  });
 }
 
 const MAPS = ['map1'];
-
-function enqueueMapAssets() {
-  MAPS.forEach(map => {
-    PIXI.loader.add(map, `assets/maps/${map}.txt`);
-  });
-}
 
 function processMapAssets() {
   MAPS.forEach(map => {
@@ -140,22 +165,23 @@ function processMapAssets() {
     const grid = rows.map(row => row.split('').map(n => parseInt(n, 36)));
     maps[map] = grid;
   });
-
-  console.log(maps);
-}
+} 
 
 export function load(callback) {
   enqueueHumanAssets();
   enqueueParticleAssets();
-  enqueueDungeonAssets();
-  enqueueMapAssets();
+  enqueue(TILE_ASSETS);
+  enqueue(TILE_DATA_ASSETS);
+  enqueue(MAP_ASSETS);
 
   PIXI.loader.load((loader, resources) => {
     processHumanAssets();
     processParticleAssets();
-    processDungeonAssets();
+    processTileAssets();
     processMapAssets();
     console.log(textures);
+    console.log(resources.map2);
+    console.log(resources.dungeon_1_data);
     if (callback) { callback(); }
   })
 }

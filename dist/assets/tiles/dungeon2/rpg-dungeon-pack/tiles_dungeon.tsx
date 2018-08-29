@@ -4,6 +4,7 @@
  <tile id="0" type="floor"/>
  <tile id="1" type="floor"/>
  <tile id="2" type="floor"/>
+ <tile id="3" type="floor"/>
  <tile id="4" type="floor"/>
  <tile id="5" type="floor"/>
  <tile id="6" type="floor"/>
@@ -14,6 +15,11 @@
  <tile id="11" type="floor"/>
  <tile id="12" type="floor"/>
  <tile id="13" type="floor"/>
+ <tile id="14" type="pit"/>
+ <tile id="15" type="pit"/>
+ <tile id="16" type="pit"/>
+ <tile id="17" type="pit"/>
+ <tile id="18" type="pit"/>
  <tile id="20" type="floor"/>
  <tile id="21" type="floor"/>
  <tile id="22" type="floor"/>
@@ -28,6 +34,11 @@
  <tile id="31" type="floor"/>
  <tile id="32" type="floor"/>
  <tile id="33" type="floor"/>
+ <tile id="34" type="pit"/>
+ <tile id="35" type="pit"/>
+ <tile id="36" type="pit"/>
+ <tile id="37" type="pit"/>
+ <tile id="38" type="pit"/>
  <tile id="40" type="floor"/>
  <tile id="41" type="floor"/>
  <tile id="42" type="floor"/>
@@ -40,6 +51,11 @@
  <tile id="49" type="floor"/>
  <tile id="50" type="floor"/>
  <tile id="51" type="floor"/>
+ <tile id="52" type="floor"/>
+ <tile id="53" type="floor"/>
+ <tile id="54" type="pit"/>
+ <tile id="55" type="pit"/>
+ <tile id="56" type="pit"/>
  <tile id="67" type="floor"/>
  <tile id="68" type="floor"/>
  <tile id="80" type="floor"/>
@@ -56,6 +72,11 @@
  <tile id="91" type="floor"/>
  <tile id="92" type="floor"/>
  <tile id="93" type="floor"/>
+ <tile id="94" type="pit"/>
+ <tile id="95" type="pit"/>
+ <tile id="96" type="pit"/>
+ <tile id="97" type="pit"/>
+ <tile id="98" type="pit"/>
  <tile id="100" type="floor"/>
  <tile id="101" type="floor"/>
  <tile id="102" type="floor"/>
@@ -70,6 +91,11 @@
  <tile id="111" type="floor"/>
  <tile id="112" type="floor"/>
  <tile id="113" type="floor"/>
+ <tile id="114" type="pit"/>
+ <tile id="115" type="pit"/>
+ <tile id="116" type="pit"/>
+ <tile id="117" type="pit"/>
+ <tile id="118" type="pit"/>
  <tile id="120" type="floor"/>
  <tile id="121" type="floor"/>
  <tile id="122" type="floor"/>
@@ -82,6 +108,9 @@
  <tile id="129" type="floor"/>
  <tile id="130" type="floor"/>
  <tile id="131" type="floor"/>
+ <tile id="134" type="pit"/>
+ <tile id="135" type="pit"/>
+ <tile id="136" type="pit"/>
  <tile id="147" type="floor"/>
  <tile id="148" type="floor"/>
  <tile id="160" type="wall"/>
@@ -160,6 +189,51 @@
  <tile id="288" type="rock"/>
  <tile id="289" type="rock"/>
  <tile id="290" type="rock"/>
+ <tile id="300" type="torch"/>
+ <tile id="301" type="torch"/>
+ <tile id="302" type="torch"/>
+ <tile id="303" type="torch"/>
+ <tile id="304" type="torch"/>
  <tile id="307" type="rock"/>
+ <tile id="308" type="stairs"/>
  <tile id="309" type="rock"/>
+ <tile id="310" type="stairs"/>
+ <tile id="320" type="torch"/>
+ <tile id="321" type="torch"/>
+ <tile id="322" type="torch"/>
+ <tile id="323" type="torch"/>
+ <tile id="324" type="torch"/>
+ <tile id="327" type="stairs"/>
+ <tile id="328" type="stairs"/>
+ <tile id="329" type="stairs"/>
+ <tile id="330" type="stairs"/>
+ <tile id="340" type="torch"/>
+ <tile id="341" type="torch"/>
+ <tile id="342" type="torch"/>
+ <tile id="343" type="torch"/>
+ <tile id="344" type="torch"/>
+ <tile id="345" type="pillar"/>
+ <tile id="346" type="pillar"/>
+ <tile id="347" type="pillar"/>
+ <tile id="348" type="pillar"/>
+ <tile id="349" type="pillar"/>
+ <tile id="350" type="pillar"/>
+ <tile id="354" type="shackles"/>
+ <tile id="355" type="shackles"/>
+ <tile id="360" type="torch"/>
+ <tile id="361" type="torch"/>
+ <tile id="362" type="torch"/>
+ <tile id="363" type="torch"/>
+ <tile id="364" type="torch"/>
+ <tile id="365" type="pillar"/>
+ <tile id="366" type="pillar"/>
+ <tile id="367" type="pillar"/>
+ <tile id="368" type="pillar"/>
+ <tile id="369" type="pillar"/>
+ <tile id="370" type="pillar"/>
+ <tile id="374" type="shackles"/>
+ <tile id="375" type="shackles"/>
+ <tile id="380" type="lever"/>
+ <tile id="381" type="lever"/>
+ <tile id="382" type="lever"/>
 </tileset>

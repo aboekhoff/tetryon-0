@@ -1,8 +1,10 @@
 import Game from '../../Game';
 import components from './components';
 import { grid, actors, stage, camera, BULLET, ENEMY, PLAYER } from './shared';
-import { angleBetween, turningAngle, wrapRotation, clamp, dist } from '../../Math.js';
+import { angleBetween, turningAngle, wrapRotation, clamp, dist, intersects } from '../../Math.js';
 import { makeBullet, makeExplosion } from './actors';
+import { astar } from './astar';
+import { textures } from './resources';
 
 const { 
   Force, 
@@ -58,37 +60,93 @@ Game.defineSystems({
 
   targetControl: {
     components: [TargetControl, Transform, SteeringControl],
+    showPath: false,
 
     each(e) {
+      e.targetControl.timer -= Game.timer.delta;
+
+      if (e.targetControl.timer <= 0) {
+        e.targetControl.timer = e.targetControl.thinkTime;
+        e.targetControl.path = astar(
+          { 
+            x: e.transform.x + 8, 
+            y: e.transform.y + 8 
+          }, 
+          { 
+            x: actors.player.transform.x + 8, 
+            y: actors.player.transform.y + 8 
+          }
+        );
+      }
+
+      if (e.targetControl.path == null) {
+        return;
+      }
+
+      while (e.targetControl.path.length) {
+        const target = e.targetControl.path[0];
+        
+        const { x: x1, y: y1 } = e.transform;
+        const x2 = target.x * 16;
+        const y2 = target.y * 16;
+        
+        if (dist(x1, y1, x2, y2) < 8) {
+          e.targetControl.path.shift();
+        } else {
+          break;
+        }
+      } 
+
+      if (this.showPath) {
+        e.targetControl.path.forEach(node => {
+          const e = Game.createEntity();
+          
+          e.transform = {
+            x: node.x * 16,
+            y: node.y * 16,
+          }
+  
+          e.sprite = {
+            texture: textures.particles.particle2,
+            scaleX: 0.01,
+            scaleY: 0.01,
+          }
+  
+          e.duration = {
+            time: 100,
+          }
+        })
+      }
+
+      const target = e.targetControl.path[0];
+
+      if (!target) { return; }
+
       const { x: x1, y: y1 } = e.transform;
-      const { x: x2, y: y2 } = actors.player.transform;
-      const d = dist(x1, y1, x2, y2);
+      const x2 = target.x * 16;
+      const y2 = target.y * 16;
+      
+      const theta = angleBetween(x1, y1, x2, y2);
+
+      const dx = Math.cos(theta);
+      const dy = Math.sin(theta);
 
       e.steeringControl.right = false;
       e.steeringControl.left = false;
       e.steeringControl.up = false;
       e.steeringControl.down = false;
 
-      if (d > 50) {
-        const targetAngle = angleBetween(x1, y1, x2, y2);
-        const targetX = Math.cos(targetAngle);
-        const targetY = Math.sin(targetAngle);
-        const absX = Math.abs(targetX);
-        const absY = Math.abs(targetY);
 
-        if (absX >= absY) {
-          if (targetX > 0) {
-            e.steeringControl.right = true;
-          } else {
-            e.steeringControl.left = true;
-          }
-        } else {
-          if (targetY > 0) {
-            e.steeringControl.down = true;
-          } else {
-            e.steeringControl.up = true;
-          }
-        }
+      if (dx > 0) {
+        e.steeringControl.right = true;
+      } else if (dx < 0) {
+        e.steeringControl.left = true;
+      }
+
+      if (dy > 0) {
+        e.steeringControl.down = true;
+      } else if (dy < 0) {
+        e.steeringControl.up = true;
       }
     }
   },
@@ -160,6 +218,58 @@ Game.defineSystems({
         const e1 = Game.getEntity(eid1);
         const e2 = Game.getEntity(eid2);
 
+        if (!intersects(e1.sprite._sprite, e2.sprite._sprite)) {
+          return;
+        }
+
+        if (e1.collider.static && e2.collider.static) {
+          return;
+        }
+
+        if (e1.collider.static || e2.collider.static) {
+          let staticObject, dynamicObject;
+
+          if (e1.collider.static) {
+            staticObject = e1;
+            dynamicObject = e2;
+          }
+
+          if (e2.collider.static) {
+            staticObject = e2;
+            dynamicObject = e1;
+          }
+
+
+          const ds = dynamicObject.sprite._sprite;
+          const ss = staticObject.sprite._sprite;
+
+          const { width: dw, height: dh } = ds;
+          const { width: sw, height: sh } = ss;
+
+          const { x: x1, y: y1 } = dynamicObject.transform;
+          const { x: x2, y: y2 } = staticObject.transform;
+
+          const a = (x1 + dw/2) < (x2 - sw/2);
+          const b = (x1 - dw/2) > (x2 + sw/2);
+          const c = (y1 + dh/2) < (y2 - sh/2);
+          const d = (y1 - dh/2) > (y2 + sh/2);
+
+          if (Math.abs(x1 - x2) >= Math.abs(y1 - y2)) {
+            dynamicObject.transform.x = x1 < x2 ? x2 - sw/2 - dw/2 : x2 + sw/2 + dw/2;
+            dynamicObject.velocity.x *= -1;
+          } else {
+            dynamicObject.transform.y = y1 < y2 ? y2 - sh/2 - dh/2 : y2 + sh/2 + dh/2;
+            dynamicObject.velocity.y *= -1;
+          }
+
+          if (dynamicObject.collider.type === BULLET) {
+            makeExplosion(dynamicObject.transform.x, dynamicObject.transform.y);
+            this.destroyList.add(dynamicObject);
+          }
+          
+          return;
+        }
+
         const t1 = e1.transform;
         const t2 = e2.transform;
         const v1 = e1.velocity;
@@ -174,7 +284,6 @@ Game.defineSystems({
         const s2 = e2.sprite._sprite.width / 2;
 
         const d = dist(x1, y1, x2, y2);
-
         const depth = (s1 + s2) - d;
 
         const dt = game.timer.delta;
@@ -183,6 +292,27 @@ Game.defineSystems({
           const bulletEnemy = BULLET ^ ENEMY;
           const playerEnemy = PLAYER ^ ENEMY;           
           const collisionType = e1.collider.type ^ e2.collider.type;
+
+          let staticObject, dynamicObject;
+
+          if (e1.collider.static || e2.collider.static) {
+            if (e1.collider.static) {
+              staticObject = e1;
+              dynamicObject = e2;
+            }
+  
+            if (e2.collider.static) {
+              staticObject = e2;
+              dynamicObject = e1;
+            }
+
+            const dx = dynamicObject.transform.x - staticObject.transform.x;
+            const dy = dynamicObject.transform.y - staticObject.transform.y;
+            
+            dynamicObject.transform.x += dx * 0.25;
+            dynamicObject.transform.y += dy * 0.25;
+            return;
+          }
 
           if (collisionType === bulletEnemy) {
             this.destroyList.add(e1);
@@ -335,13 +465,9 @@ Game.defineSystems({
       }
 
       const dx = x2 - x1;
-      const cx = Math.abs(dx) > threshold ? 0.02 : 0.01;
-
       const dy = y2 - y1;
-      const cy = Math.abs(dy) > threshold ? 0.02 : 0.01;
-
-      camera.x += dx * cx;
-      camera.y += dy * cy;
+      camera.x += (dx / threshold) * 0.15;
+      camera.y += (dy / threshold) * 0.15;
     }
   }
 });
