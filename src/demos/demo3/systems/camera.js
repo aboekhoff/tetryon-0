@@ -9,7 +9,6 @@ export default {
     stage.rotation = 0;
 
     if (trauma > 0) {  
-      console.log(trauma)
       const traumaCoefficient = Math.pow(trauma / 10, 2);
       const traumaX = traumaCoefficient * (rng.nextFloat(-1, 1));
       const traumaY = traumaCoefficient * (rng.nextFloat(-1, 1));

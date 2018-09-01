@@ -34,7 +34,7 @@ function makeHumanAnimations(resource) {
 export function makeExplosion(x, y) {
   const numParticles = rng.nextInt(32, 256);
   for (let i = 0; i < numParticles; i++) {
-    const speed = rng.nextFloat(1, 3) * rng.nextFloat(1, 3);
+    const speed = rng.nextFloat(0.1, 1) * rng.nextFloat(1, 2);
     const duration = rng.nextInt(50, 200);
     const rotation = rng.nextFloat(0, Math.PI * 2);
 
@@ -50,6 +50,7 @@ export function makeExplosion(x, y) {
       texture: textures.particles.particle3,
       scaleX: 0.005,
       scaleY: 0.005,
+      zIndex: 1,
     }
   }
 }
@@ -64,6 +65,7 @@ export function makeBlast(x, y) {
     texture: textures.particles.particle2,
     scaleX: 0.01,
     scaleY: 0.01,
+    zIndex: 1,
   }
 }
 
@@ -78,6 +80,7 @@ export function makeBullet(x, y, vx, vy, duration = 1000) {
     texture: textures.particles.particle2,
     scaleX: 0.025,
     scaleY: 0.025,
+    zIndex: 1,
   };
   e.collider = { type: BULLET };
 
@@ -95,13 +98,13 @@ export function makeEnemy(x, y, avatar) {
 
   e.transform = { x, y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.45 };
-  e.state = { orientation: 'down', moving: false },
+  e.velocity = { x: 0, y: 0, drag: 0.5 };
+  e.state = { orientation: 'down', moving: false, hitpoints: 1 },
   e.targetControl = {};
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations(avatar);
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 1, scaleY: 1 };  
+  e.sprite = { scaleX: 1, scaleY: 1, zIndex: 1 };  
   e.collider = { type: ENEMY };
 }
 
@@ -115,7 +118,7 @@ export function makePlayer(x, y, avatar) {
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations('ninja1');
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 1, scaleY: 1 };  
+  e.sprite = { scaleX: 1, scaleY: 1, zIndex: 1 };  
   e.sprite._sprite.texture = e.animation.data.frames[0];
   e.collider = { type: PLAYER };
 

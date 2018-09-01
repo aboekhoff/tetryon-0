@@ -46133,7 +46133,7 @@ function makeHumanAnimations(resource) {
 function makeExplosion(x, y) {
   var numParticles = _shared.rng.nextInt(32, 256);
   for (var i = 0; i < numParticles; i++) {
-    var speed = _shared.rng.nextFloat(1, 3) * _shared.rng.nextFloat(1, 3);
+    var speed = _shared.rng.nextFloat(0.1, 1) * _shared.rng.nextFloat(1, 2);
     var duration = _shared.rng.nextInt(50, 200);
     var rotation = _shared.rng.nextFloat(0, Math.PI * 2);
 
@@ -46148,7 +46148,8 @@ function makeExplosion(x, y) {
     p.sprite = {
       texture: _resources.textures.particles.particle3,
       scaleX: 0.005,
-      scaleY: 0.005
+      scaleY: 0.005,
+      zIndex: 1
     };
   }
 }
@@ -46162,7 +46163,8 @@ function makeBlast(x, y) {
     alpha: 1,
     texture: _resources.textures.particles.particle2,
     scaleX: 0.01,
-    scaleY: 0.01
+    scaleY: 0.01,
+    zIndex: 1
   };
 }
 
@@ -46178,7 +46180,8 @@ function makeBullet(x, y, vx, vy) {
   e.sprite = {
     texture: _resources.textures.particles.particle2,
     scaleX: 0.025,
-    scaleY: 0.025
+    scaleY: 0.025,
+    zIndex: 1
   };
   e.collider = { type: _shared.BULLET };
 
@@ -46196,12 +46199,12 @@ function makeEnemy(x, y, avatar) {
 
   e.transform = { x: x, y: y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.45 };
-  e.state = { orientation: 'down', moving: false }, e.targetControl = {};
+  e.velocity = { x: 0, y: 0, drag: 0.5 };
+  e.state = { orientation: 'down', moving: false, hitpoints: 1 }, e.targetControl = {};
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations(avatar);
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 1, scaleY: 1 };
+  e.sprite = { scaleX: 1, scaleY: 1, zIndex: 1 };
   e.collider = { type: _shared.ENEMY };
 }
 
@@ -46214,7 +46217,7 @@ function makePlayer(x, y, avatar) {
   e.state = { orientation: 'down', moving: false }, e.steeringControl = {};
   e.animationControl = makeHumanAnimations('ninja1');
   e.animation = { data: e.animationControl.down };
-  e.sprite = { scaleX: 1, scaleY: 1 };
+  e.sprite = { scaleX: 1, scaleY: 1, zIndex: 1 };
   e.sprite._sprite.texture = e.animation.data.frames[0];
   e.collider = { type: _shared.PLAYER };
 
@@ -46360,7 +46363,7 @@ function _astar(start, goal, nodes) {
   return null;
 }
 
-},{"../../Math":197,"./world":224}],204:[function(require,module,exports){
+},{"../../Math":197,"./world":225}],204:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46397,7 +46400,6 @@ exports.default = _Game2.default.defineComponents({
   Force: { x: 0, y: 0 },
   Velocity: { x: 0, y: 0 },
   Duration: { time: 0 },
-  Orientation: { direction: 'right' },
   TargetControl: {
     targetId: null,
     state: 'seek',
@@ -46436,7 +46438,8 @@ exports.default = _Game2.default.defineComponents({
     orientation: 'down',
     moving: false,
     firing: false,
-    hitpoints: 10
+    hitpoints: 2,
+    alive: true
   },
   AnimationControl: {
     right: null,
@@ -46461,6 +46464,7 @@ exports.default = _Game2.default.defineComponents({
     scaleY: 1,
     rotation: 0,
     texture: null,
+    layer: 1,
     _sprite: null
   }, {
     acquire: function acquire(params, defaults) {
@@ -46533,10 +46537,9 @@ var _systems2 = _interopRequireDefault(_systems);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-console.log('yowtf');
-console.log(_systems2.default);
-
 window.game = _Game2.default;
+
+var NUM_ENEMIES = 80;
 
 function start() {
   (0, _resources.load)().then(function () {
@@ -46544,10 +46547,10 @@ function start() {
       return _audio.theme.play();
     });
     (0, _world.loadTiledMap)('map2');
-    var player = (0, _actors.makePlayer)(66 * 16, 48 * 16);
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < NUM_ENEMIES; i++) {
       (0, _actors.makeEnemy)(66 * 16, 42 * 16);
     }
+    var player = (0, _actors.makePlayer)(66 * 16, 48 * 16);
 
     _shared.camera.target = player;
     _shared.camera.x = player.transform.x;
@@ -46562,7 +46565,7 @@ function start() {
   });
 }
 
-},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./resources":207,"./shared":208,"./systems":216,"./world":224}],207:[function(require,module,exports){
+},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./resources":207,"./shared":208,"./systems":216,"./world":225}],207:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46744,7 +46747,7 @@ var callbacks = [];
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.grid = exports.stage = exports.app = exports.camera = exports.actors = exports.rng = exports.PLAYER = exports.ENEMY = exports.BULLET = undefined;
+exports.grid = exports.stage = exports.app = exports.camera = exports.actors = exports.rng = exports.DEBRIS = exports.PLAYER = exports.ENEMY = exports.BULLET = undefined;
 
 var _pixi = require('pixi.js');
 
@@ -46769,6 +46772,7 @@ var RANDOM_SEED = 42;
 var BULLET = exports.BULLET = 1 << 0;
 var ENEMY = exports.ENEMY = 1 << 1;
 var PLAYER = exports.PLAYER = 1 << 2;
+var DEBRIS = exports.DEBRIS = 1 << 3;
 var rng = exports.rng = new _Random2.default(RANDOM_SEED);
 
 var actors = exports.actors = {
@@ -46908,7 +46912,6 @@ exports.default = {
     _shared.stage.rotation = 0;
 
     if (trauma > 0) {
-      console.log(trauma);
       var traumaCoefficient = Math.pow(trauma / 10, 2);
       var traumaX = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
       var traumaY = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
@@ -47115,12 +47118,14 @@ exports.default = {
               enemy = _ref4[1];
 
           _this.destroyList.add(bullet);
+          enemy.state.hitpoints--;
+
+          console.log(enemy.state);
 
           enemy.flash = {};
 
-          var collisionAngle = (0, _Math.angleBetween)(bullet.transform.x, bullet.transform.y, enemy.transform.x, enemy.transform.y);
-          enemy.force.x += Math.cos(collisionAngle) * 20;
-          enemy.force.y += Math.sin(collisionAngle) * 20;
+          enemy.force.x += bullet.velocity.x;
+          enemy.force.y += bullet.velocity.y;
           (0, _actors.makeBlast)(bullet.transform.x, bullet.transform.y);
           return;
         }
@@ -47292,6 +47297,10 @@ var _input = require('./input');
 
 var _input2 = _interopRequireDefault(_input);
 
+var _life = require('./life');
+
+var _life2 = _interopRequireDefault(_life);
+
 var _logic = require('./logic');
 
 var _logic2 = _interopRequireDefault(_logic);
@@ -47327,10 +47336,11 @@ exports.default = _Game2.default.defineSystems({
   duration: _duration2.default,
   animation: _animation2.default,
   sprite: _sprite2.default,
-  camera: _camera2.default
+  camera: _camera2.default,
+  life: _life2.default
 });
 
-},{"../../../Game":193,"./animation":209,"./animationControl":210,"./camera":211,"./collision":212,"./duration":213,"./expand":214,"./flash":215,"./input":217,"./logic":218,"./physics":219,"./sprite":220,"./steeringControl":221,"./targetControl":222}],217:[function(require,module,exports){
+},{"../../../Game":193,"./animation":209,"./animationControl":210,"./camera":211,"./collision":212,"./duration":213,"./expand":214,"./flash":215,"./input":217,"./life":218,"./logic":219,"./physics":220,"./sprite":221,"./steeringControl":222,"./targetControl":223}],217:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47417,6 +47427,51 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+var _shared = require('../shared');
+
+var _actors = require('../actors');
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Transform = _components2.default.Transform,
+    State = _components2.default.State;
+exports.default = {
+  components: [Transform, State],
+
+  each: function each(e) {
+    var t = e.transform;
+    var s = e.state;
+
+    if (s.alive && s.hitpoints <= 0) {
+      e.targetControl = null;
+      e.steeringControl = null;
+      e.flash = null;
+      e.velocity.drag = 0.1;
+
+      e.collider.type = _shared.DEBRIS;
+
+      s.alive = false;
+      s.orientation = 'right';
+      s.moving = false;
+
+      e.sprite._sprite.tint = 0x888888;
+      e.sprite.zIndex = 2;
+      e.sprite.rotation = Math.random() < 0.5 ? Math.PI / 2 : Math.PI / 2 * 3;
+    }
+  }
+};
+
+},{"../actors":202,"../components":205,"../shared":208}],219:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
 var _Game = require('../../../Game');
 
 var _Game2 = _interopRequireDefault(_Game);
@@ -47430,7 +47485,7 @@ exports.default = {
   }
 };
 
-},{"../../../Game":193}],219:[function(require,module,exports){
+},{"../../../Game":193}],220:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47472,12 +47527,14 @@ exports.default = {
     }
 };
 
-},{"../components":205}],220:[function(require,module,exports){
+},{"../components":205}],221:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+
+var _shared = require('../shared');
 
 var _components = require('../components');
 
@@ -47499,7 +47556,9 @@ exports.default = {
         scaleY = _e$sprite.scaleY,
         texture = _e$sprite.texture,
         _sprite = _e$sprite._sprite,
-        alpha = _e$sprite.alpha;
+        rotation = _e$sprite.rotation,
+        alpha = _e$sprite.alpha,
+        zIndex = _e$sprite.zIndex;
 
 
     _sprite.texture = texture;
@@ -47508,10 +47567,12 @@ exports.default = {
     _sprite.scale.x = scaleX;
     _sprite.scale.y = scaleY;
     _sprite.alpha = alpha;
+    _sprite.rotation = rotation;
+    _sprite.zIndex = zIndex;
   }
 };
 
-},{"../components":205}],221:[function(require,module,exports){
+},{"../components":205,"../shared":208}],222:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47558,7 +47619,7 @@ exports.default = {
   }
 };
 
-},{"../../../Game":193,"../components":205,"../util":223}],222:[function(require,module,exports){
+},{"../../../Game":193,"../components":205,"../util":224}],223:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47662,7 +47723,7 @@ exports.default = {
   }
 };
 
-},{"../../../Game":193,"../../../Math":197,"../astar":203,"../components":205,"../shared":208}],223:[function(require,module,exports){
+},{"../../../Game":193,"../../../Math":197,"../astar":203,"../components":205,"../shared":208}],224:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47688,7 +47749,7 @@ function getOrientationFromRotation(rotation) {
   }
 }
 
-},{}],224:[function(require,module,exports){
+},{}],225:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47839,7 +47900,8 @@ function loadTiledMap(name) {
           anchorX: 0.5,
           anchorY: 0.5,
           scaleX: 1,
-          scaleY: 1
+          scaleY: 1,
+          zIndex: 3
         };
 
         if (type !== 'floor') {
@@ -47868,6 +47930,7 @@ function loadMap(map, tileset) {
       var tile = _Game2.default.createEntity();
       tile.transform = { x: x * tileSize, y: y * tileSize };
       tile.sprite = {
+        zIndex: 3,
         texture: texture,
         anchorX: 0.5,
         anchorY: 0.5,
@@ -47878,7 +47941,7 @@ function loadMap(map, tileset) {
   }
 }
 
-},{"../../Game":193,"./resources":207}],225:[function(require,module,exports){
+},{"../../Game":193,"./resources":207}],226:[function(require,module,exports){
 'use strict';
 
 var _demo = require('./demos/demo3');
@@ -47909,4 +47972,4 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // console.log(g.query(e1));
 // console.log(g.query(e2));
 
-},{"./demos/demo3":206}]},{},[225]);
+},{"./demos/demo3":206}]},{},[226]);

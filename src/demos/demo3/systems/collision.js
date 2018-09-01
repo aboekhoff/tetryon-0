@@ -122,12 +122,14 @@ export default {
           const [bullet, enemy] = e1.collider.type === BULLET ? [e1, e2] : [e2, e1];
 
           this.destroyList.add(bullet);
-          
+          enemy.state.hitpoints--;
+
+          console.log(enemy.state);
+
           enemy.flash = {};
           
-          const collisionAngle = angleBetween(bullet.transform.x, bullet.transform.y, enemy.transform.x, enemy.transform.y);
-          enemy.force.x += Math.cos(collisionAngle) * 20;
-          enemy.force.y += Math.sin(collisionAngle) * 20;
+          enemy.force.x += bullet.velocity.x;
+          enemy.force.y += bullet.velocity.y;
           makeBlast(bullet.transform.x, bullet.transform.y);
           return;
         }

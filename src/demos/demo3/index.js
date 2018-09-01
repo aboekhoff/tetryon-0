@@ -7,18 +7,17 @@ import { theme } from './audio';
 import './components';
 import systems from './systems';
 
-console.log('yowtf')
-console.log(systems);
-
 window.game = Game;
+
+const NUM_ENEMIES = 80;
 
 export default function start() {
   load().then(() => {
     theme.once('load', () => theme.play());
     loadTiledMap('map2');
+    for (let i = 0; i < NUM_ENEMIES; i++) { makeEnemy(66 * 16, 42 * 16); }
     const player = makePlayer(66 * 16, 48 * 16);
-    for (let i = 0; i < 10; i++) { makeEnemy(66 * 16, 42 * 16); }
-    
+
     camera.target = player;
     camera.x = player.transform.x;
     camera.y = player.transform.y;

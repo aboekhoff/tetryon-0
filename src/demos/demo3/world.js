@@ -108,6 +108,7 @@ export function loadTiledMap(name) {
           anchorY: 0.5,
           scaleX: 1,
           scaleY: 1,
+          zIndex: 3,
         }
 
         if (type !== 'floor') {
@@ -134,6 +135,7 @@ export function loadMap(map, tileset, tileSize = TILE_SIZE) {
       const tile = Game.createEntity();
       tile.transform = { x: x * tileSize, y: y * tileSize };
       tile.sprite = {
+        zIndex: 3,
         texture,
         anchorX: 0.5,
         anchorY: 0.5,

@@ -8,6 +8,7 @@ import duration from './duration';
 import expand from './expand';
 import flash from './flash';
 import input from './input';
+import life from './life';
 import logic from './logic';
 import physics from './physics';
 import sprite from './sprite';
@@ -28,4 +29,5 @@ export default Game.defineSystems({
   animation,
   sprite,
   camera,
+  life,
 })

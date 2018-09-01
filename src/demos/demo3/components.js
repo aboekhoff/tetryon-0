@@ -6,7 +6,6 @@ export default Game.defineComponents({
   Force: { x: 0, y: 0 },
   Velocity: { x: 0, y: 0 },
   Duration: { time: 0 },
-  Orientation: { direction: 'right' },
   TargetControl: { 
     targetId: null,
     state: 'seek',
@@ -45,7 +44,8 @@ export default Game.defineComponents({
     orientation: 'down',
     moving: false,
     firing: false,
-    hitpoints: 10,
+    hitpoints: 2,
+    alive: true,
   },
   AnimationControl: {
     right: null,
@@ -70,7 +70,8 @@ export default Game.defineComponents({
       scaleX: 1, 
       scaleY: 1, 
       rotation: 0, 
-      texture: null, 
+      texture: null,
+      layer: 1, 
       _sprite: null 
     },
     {

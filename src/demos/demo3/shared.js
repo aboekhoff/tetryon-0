@@ -9,6 +9,7 @@ const RANDOM_SEED = 42;
 export const BULLET = (1 << 0);
 export const ENEMY  = (1 << 1);
 export const PLAYER = (1 << 2);
+export const DEBRIS = (1 << 3);
 export const rng = new Random(RANDOM_SEED);
 
 export const actors = {
