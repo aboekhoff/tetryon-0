@@ -22,8 +22,16 @@ export default class ObjectPool {
     }
   
     release(instance1) {
+      if (instance1 == null) {
+        debugger;
+      }
+
       const index = this.instanceToIndex.get(instance1);
       this.marker--
+
+      if (this.marker < 0) {
+        debugger;
+      }
   
       if (index === this.marker) {
         return;

@@ -44714,6 +44714,11 @@ function define1(name, defaults) {
     var params = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
     var component = pool.acquire();
+
+    if (component == null) {
+      debugger;
+    }
+
     component._eid = entityId;
     byEntityId.set(entityId, component);
 
@@ -44828,7 +44833,7 @@ var Entity = function () {
     }
   }, {
     key: 'removeComponent',
-    value: function removeComponent(componentType, params) {
+    value: function removeComponent(componentType) {
       Entity.removeComponent(this, componentType);
       return this;
     }
@@ -44881,6 +44886,9 @@ Entity.addComponent = function (entity, componentType, params) {
 };
 
 Entity.removeComponent = function (entity, componentType) {
+  if (!(entity.mask & componentType.mask)) {
+    return;
+  }
   entity.mask &= ~componentType.mask;
   var component = componentType.byEntityId.get(entity.id);
   if (component) {
@@ -45035,7 +45043,9 @@ var Game = function () {
         },
         set: function set(params) {
           this.removeComponent(componentType);
-          this.addComponent(componentType, params);
+          if (params) {
+            this.addComponent(componentType, params);
+          }
         }
       });
     }
@@ -45854,8 +45864,16 @@ var ObjectPool = function () {
   }, {
     key: "release",
     value: function release(instance1) {
+      if (instance1 == null) {
+        debugger;
+      }
+
       var index = this.instanceToIndex.get(instance1);
       this.marker--;
+
+      if (this.marker < 0) {
+        debugger;
+      }
 
       if (index === this.marker) {
         return;
@@ -46065,6 +46083,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.makeExplosion = makeExplosion;
+exports.makeBlast = makeBlast;
 exports.makeBullet = makeBullet;
 exports.makeEnemy = makeEnemy;
 exports.makePlayer = makePlayer;
@@ -46113,8 +46132,8 @@ function makeHumanAnimations(resource) {
 function makeExplosion(x, y) {
   var numParticles = _shared.rng.nextInt(32, 256);
   for (var i = 0; i < numParticles; i++) {
-    var speed = _shared.rng.nextInt(4, 8);
-    var duration = _shared.rng.nextInt(50, 300);
+    var speed = _shared.rng.nextFloat(1, 3) * _shared.rng.nextFloat(1, 3);
+    var duration = _shared.rng.nextInt(50, 200);
     var rotation = _shared.rng.nextFloat(0, Math.PI * 2);
 
     var vx = Math.cos(rotation) * speed;
@@ -46131,6 +46150,19 @@ function makeExplosion(x, y) {
       scaleY: 0.005
     };
   }
+}
+
+function makeBlast(x, y) {
+  var e = _Game2.default.createEntity();
+  e.transform = { x: x, y: y };
+  e.expand = { amount: 0.01 };
+  e.duration = { time: 100 };
+  e.sprite = {
+    alpha: 1,
+    texture: _resources.textures.particles.particle2,
+    scaleX: 0.01,
+    scaleY: 0.01
+  };
 }
 
 function makeBullet(x, y, vx, vy) {
@@ -46163,7 +46195,7 @@ function makeEnemy(x, y, avatar) {
 
   e.transform = { x: x, y: y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.5 };
+  e.velocity = { x: 0, y: 0, drag: 0.45 };
   e.state = { orientation: 'down', moving: false }, e.targetControl = {};
   e.steeringControl = {};
   e.animationControl = makeHumanAnimations(avatar);
@@ -46191,7 +46223,7 @@ function makePlayer(x, y, avatar) {
   return e;
 }
 
-},{"../../Game":193,"./resources":208,"./shared":209,"./world":211}],203:[function(require,module,exports){
+},{"../../Game":193,"./resources":208,"./shared":209,"./world":212}],203:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -46261,8 +46293,6 @@ function astar(startTransform, goalTransform) {
   var goalKey = goalX + ":" + goalY;
   var goalNode = nodes[goalKey];
 
-  console.log(startNode, goalNode);
-
   return _astar(startNode, goalNode, graph.nodes);
 }
 
@@ -46329,7 +46359,7 @@ function _astar(start, goal, nodes) {
   return null;
 }
 
-},{"../../Math":197,"./world":211}],204:[function(require,module,exports){
+},{"../../Math":197,"./world":212}],204:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46373,7 +46403,7 @@ exports.default = _Game2.default.defineComponents({
     state: 'seek',
     path: null,
     timer: 0,
-    thinkTime: 2000
+    thinkTime: 500
   },
   Effect: {
     targetId: null,
@@ -46390,12 +46420,17 @@ exports.default = _Game2.default.defineComponents({
     bullet: 'default'
   },
   SteeringControl: {
-    right: false,
-    left: false,
-    up: false,
-    down: false,
+    rotation: false,
+    accelerate: false,
     fire: false,
     action: false
+  },
+  Flash: {
+    duration: 500,
+    time: 0
+  },
+  Expand: {
+    amount: 0.001
   },
   State: {
     orientation: 'down',
@@ -46419,6 +46454,7 @@ exports.default = _Game2.default.defineComponents({
     active: false
   },
   Sprite: [{
+    alpha: 1,
     anchorX: 0.5,
     anchorY: 0.5,
     scaleX: 1,
@@ -46517,13 +46553,13 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 window.game = _Game2.default;
 
 function start() {
-  (0, _resources.load)(function () {
+  (0, _resources.load)().then(function () {
     _audio.theme.once('load', function () {
       return _audio.theme.play();
     });
     (0, _world.loadTiledMap)('map2');
     var player = (0, _actors.makePlayer)(66 * 16, 48 * 16);
-    for (var i = 0; i < 24; i++) {
+    for (var i = 0; i < 10; i++) {
       (0, _actors.makeEnemy)(66 * 16, 42 * 16);
     }
 
@@ -46540,7 +46576,7 @@ function start() {
   });
 }
 
-},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./input":207,"./resources":208,"./shared":209,"./systems":210,"./world":211}],207:[function(require,module,exports){
+},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./input":207,"./resources":208,"./shared":209,"./systems":210,"./world":212}],207:[function(require,module,exports){
 'use strict';
 
 var _Game = require('../../Game');
@@ -46572,31 +46608,29 @@ var PIXI = _interopRequireWildcard(_pixi);
 
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
-function enqueue(object) {
-  Object.keys(object).forEach(function (key) {
-    PIXI.loader.add(key, object[key]);
-  });
-}
+function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
+
+var BASE_URL = '/assets/';
+
+var textures = exports.textures = window.textures = {
+  humans: {},
+  monsters: {},
+  particles: {},
+  tiles: {},
+  tileData: {},
+  maps: {}
+};
 
 var TILE_ASSETS = {
-  dungeon_1: 'assets/maps/tiles_dungeon_1.png',
-  dungeon_2: 'assets/maps/tiles_dungeon_2.png'
+  'tiles_dungeon_1.png': 'maps/tiles_dungeon_1.png'
 };
 
 var TILE_DATA_ASSETS = {
-  dungeon_1_data: 'assets/maps/tiles_dungeon_1.json'
+  'tiles_dungeon_1.png.data': 'maps/tiles_dungeon_1.png.json'
 };
 
 var MAP_ASSETS = {
-  map1: 'assets/maps/map1.txt',
-  map2: 'assets/maps/map2.json'
-};
-
-var TILED_MAPS = {
-  map2: {
-    tiles: 'dungeon_2',
-    json: 'map2'
-  }
+  map2: 'maps/map2.json'
 };
 
 var PARTICLES = ['particle1', 'particle2', 'particle3'];
@@ -46607,19 +46641,26 @@ var DIRECTIONS = ['back', 'front', 'side'];
 
 var TYPES = [1, 2, 3, 4];
 
-var textures = exports.textures = {
-  humans: {},
-  monsters: {},
-  particles: {},
-  tiles: {}
-};
+var NUM_FRAMES = 4;
+var HUMAN_WIDTH = 16;
+var HUMAN_HEIGHT = 16;
 
 var maps = exports.maps = {};
 
-var enqueuedMonsters = [];
-var enqueuedHumans = [];
+function loadResource(url) {
+  var loader = new PIXI.loaders.Loader(BASE_URL);
 
-function enqueueHumanAssets() {
+  return new Promise(function (resolve, reject) {
+    loader.add(url, url);
+    loader.load(function (loader, resources) {
+      resolve(resources[url]);
+    });
+  });
+}
+
+function loadHumanAssets() {
+  var promises = [];
+
   HUMANS.forEach(function (human) {
 
     TYPES.forEach(function (type) {
@@ -46627,33 +46668,35 @@ function enqueueHumanAssets() {
 
       DIRECTIONS.forEach(function (direction) {
         var name = '' + human + type + '_' + direction;
-        var path = 'assets/human/' + direction + '/' + human + type + '.png';
-        PIXI.loader.add(name, path);
-        enqueuedHumans.push({
-          spriteName: '' + human + type,
-          resourceName: name,
-          type: type,
-          direction: direction,
-          path: path
-        });
+        var path = 'human/' + direction + '/' + human + type + '.png';
+
+        promises.push(loadResource(path).then(function (resource) {
+          processHumanAsset({
+            spriteName: '' + human + type,
+            resourceName: name,
+            type: type,
+            direction: direction,
+            path: path,
+            resource: resource
+          });
+        }));
       });
     });
   });
-}
 
-var NUM_FRAMES = 4;
-var HUMAN_WIDTH = 16;
-var HUMAN_HEIGHT = 16;
+  return promises;
+}
 
 function processHumanAsset(_ref) {
   var spriteName = _ref.spriteName,
       resourceName = _ref.resourceName,
-      direction = _ref.direction;
+      direction = _ref.direction,
+      resource = _ref.resource;
 
   var frames = [];
 
   for (var i = 0; i < NUM_FRAMES; i++) {
-    var baseTexture = PIXI.loader.resources[resourceName].texture.baseTexture;
+    var baseTexture = resource.texture.baseTexture;
 
     baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
 
@@ -46666,81 +46709,62 @@ function processHumanAsset(_ref) {
   textures.humans[spriteName][direction] = frames;
 };
 
-function processHumanAssets() {
-  enqueuedHumans.forEach(processHumanAsset);
-}
-
-function enqueueParticleAssets() {
-  PARTICLES.forEach(function (particle) {
-    PIXI.loader.add(particle, 'assets/particles/' + particle + '.png');
+function loadParticleAssets() {
+  return PARTICLES.map(function (particle) {
+    var url = 'particles/' + particle + '.png';
+    return loadResource(url).then(function (resource) {
+      textures.particles[particle] = resource.texture;
+    });
   });
-}
-
-function processParticleAssets() {
-  PARTICLES.forEach(function (name) {
-    textures.particles[name] = PIXI.loader.resources[name].texture;
-  });
-}
-
-function enqueueTileAssets() {
-  enqueue(TILE_ASSETS);
 }
 
 // using the 32 x 32 dungeon tile set
-function processTileAssets() {
-  var SIZE = 32;
+function loadTileAssets() {
+  var SIZE = 16;
 
-  Object.keys(TILE_ASSETS).forEach(function (key) {
-    var resource = PIXI.loader.resources[key];
-    var baseTexture = resource.texture.baseTexture;
+  return Object.keys(TILE_ASSETS).map(function (key) {
+    return loadResource(TILE_ASSETS[key]).then(function (resource) {
+      var baseTexture = resource.texture.baseTexture;
 
-    textures.tiles[key] = [];
+      baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
 
-    for (var y = 0; y < baseTexture.height; y += SIZE) {
-      for (var x = 0; x < baseTexture.width; x += SIZE) {
-        var rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
-        var texture = new PIXI.Texture(baseTexture, rectangle);
-        textures.tiles[key].push(texture);
+      textures.tiles[key] = [];
+
+      for (var y = 0; y < baseTexture.height; y += SIZE) {
+        for (var x = 0; x < baseTexture.width; x += SIZE) {
+          var rectangle = new PIXI.Rectangle(x, y, SIZE, SIZE);
+          var texture = new PIXI.Texture(baseTexture, rectangle);
+          textures.tiles[key].push(texture);
+        }
       }
-    }
-  });
-}
-
-var MAPS = ['map1'];
-
-function processMapAssets() {
-  MAPS.forEach(function (map) {
-    var data = PIXI.loader.resources[map].data;
-
-    var rows = data.split(/\s+/);
-    var grid = rows.map(function (row) {
-      return row.split('').map(function (n) {
-        return parseInt(n, 36);
-      });
     });
-    maps[map] = grid;
   });
 }
 
-function load(callback) {
-  enqueueHumanAssets();
-  enqueueParticleAssets();
-  enqueue(TILE_ASSETS);
-  enqueue(TILE_DATA_ASSETS);
-  enqueue(MAP_ASSETS);
+function loadMapAssets() {
+  return Object.keys(MAP_ASSETS).map(function (name) {
+    var url = MAP_ASSETS[name];
 
-  PIXI.loader.load(function (loader, resources) {
-    processHumanAssets();
-    processParticleAssets();
-    processTileAssets();
-    processMapAssets();
-    console.log(textures);
-    console.log(resources.map2);
-    console.log(resources.dungeon_1_data);
-    if (callback) {
-      callback();
-    }
+    return loadResource(url).then(function (resource) {
+      textures.maps[name] = resource;
+    });
   });
+}
+
+function loadTileDataAssets() {
+  return Object.keys(TILE_DATA_ASSETS).map(function (name) {
+    return loadResource(TILE_DATA_ASSETS[name]).then(function (resource) {
+      textures.tileData[name] = resource;
+    });
+  });
+}
+
+function load() {
+  var promises = [].concat(_toConsumableArray(loadHumanAssets()), _toConsumableArray(loadMapAssets()), _toConsumableArray(loadParticleAssets()), _toConsumableArray(loadTileAssets()), _toConsumableArray(loadTileDataAssets()));
+
+  console.log(promises);
+
+  return Promise.all(promises);
 }
 
 var callbacks = [];
@@ -46839,6 +46863,8 @@ var _astar = require('./astar');
 
 var _resources = require('./resources');
 
+var _util = require('./util');
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 var Force = _components2.default.Force,
@@ -46851,10 +46877,10 @@ var Force = _components2.default.Force,
     Transform = _components2.default.Transform,
     Velocity = _components2.default.Velocity,
     Animation = _components2.default.Animation,
-    Sprite = _components2.default.Sprite;
+    Sprite = _components2.default.Sprite,
+    Flash = _components2.default.Flash,
+    Expand = _components2.default.Expand;
 
-
-var ctimer = 0;
 
 _Game2.default.defineSystems({
   input: {
@@ -46871,27 +46897,36 @@ _Game2.default.defineSystems({
       var player = _shared.actors.player;
       var sc = player.steeringControl;
 
-      sc.right = right.isDown;
-      sc.left = left.isDown;
-      sc.up = up.isDown;
-      sc.down = down.isDown;
+      var R = right.isDown;
+      var L = left.isDown;
+      var U = up.isDown;
+      var D = down.isDown;
+
+      sc.accelerate = R || L || U || D;
+
+      if (R && D) {
+        sc.rotation = Math.PI / 4;
+      } else if (L && D) {
+        sc.rotation = Math.PI / 4 * 3;
+      } else if (L && U) {
+        sc.rotation = Math.PI / 4 * 5;
+      } else if (R && U) {
+        sc.rotation = Math.PI / 4 * 7;
+      } else if (R) {
+        sc.rotation = 0;
+      } else if (L) {
+        sc.rotation = Math.PI;
+      } else if (D) {
+        sc.rotation = Math.PI / 2;
+      } else if (U) {
+        sc.rotation = Math.PI / 2 * 3;
+      }
 
       if (fire.pressed) {
-        var x = 0;
-        var y = 0;
+        var x = Math.cos(sc.rotation);
+        var y = Math.sin(sc.rotation);
 
-        switch (player.state.orientation) {
-          case 'down':
-            y = 1;break;
-          case 'right':
-            x = 1;break;
-          case 'left':
-            x = -1;break;
-          case 'up':
-            y = -1;break;
-        }
-
-        (0, _actors.makeBullet)(player.transform.x, player.transform.y, player.velocity.x + x * 6, player.velocity.y + y * 6);
+        (0, _actors.makeBullet)(player.transform.x, player.transform.y, x * 6, y * 6);
       }
     }
   },
@@ -46928,7 +46963,7 @@ _Game2.default.defineSystems({
         var _x2 = _target.x * 16;
         var _y2 = _target.y * 16;
 
-        if ((0, _Math.dist)(_x, _y, _x2, _y2) < 8) {
+        if ((0, _Math.dist)(_x, _y, _x2, _y2) < 16) {
           e.targetControl.path.shift();
         } else {
           break;
@@ -46969,27 +47004,8 @@ _Game2.default.defineSystems({
       var x2 = target.x * 16;
       var y2 = target.y * 16;
 
-      var theta = (0, _Math.angleBetween)(x1, y1, x2, y2);
-
-      var dx = Math.cos(theta);
-      var dy = Math.sin(theta);
-
-      e.steeringControl.right = false;
-      e.steeringControl.left = false;
-      e.steeringControl.up = false;
-      e.steeringControl.down = false;
-
-      if (dx > 0) {
-        e.steeringControl.right = true;
-      } else if (dx < 0) {
-        e.steeringControl.left = true;
-      }
-
-      if (dy > 0) {
-        e.steeringControl.down = true;
-      } else if (dy < 0) {
-        e.steeringControl.up = true;
-      }
+      e.steeringControl.rotation = (0, _Math.angleBetween)(x1, y1, x2, y2);
+      e.steeringControl.accelerate = true;
     }
   },
 
@@ -46998,38 +47014,22 @@ _Game2.default.defineSystems({
 
     each: function each(e) {
       var _e$steeringControl = e.steeringControl,
-          right = _e$steeringControl.right,
-          left = _e$steeringControl.left,
-          up = _e$steeringControl.up,
-          down = _e$steeringControl.down,
-          fire = _e$steeringControl.fire;
+          rotation = _e$steeringControl.rotation,
+          accelerate = _e$steeringControl.accelerate;
 
       var f = e.force;
+      var dt = _Game2.default.timer.delta;
 
       e.state.moving = false;
 
-      if (right) {
-        f.x += 1;
-        e.state.orientation = 'right';
+      if (accelerate) {
+        e.state.orientation = (0, _util.getOrientationFromRotation)(rotation);
         e.state.moving = true;
-      }
+        var dx = Math.cos(rotation);
+        var dy = Math.sin(rotation);
 
-      if (left) {
-        f.x -= 1;
-        e.state.orientation = 'left';
-        e.state.moving = true;
-      }
-
-      if (up) {
-        f.y -= 1;
-        e.state.orientation = 'up';
-        e.state.moving = true;
-      }
-
-      if (down) {
-        f.y += 1;
-        e.state.orientation = 'down';
-        e.state.moving = true;
+        f.x += dx;
+        f.y += dy;
       }
     }
   },
@@ -47127,7 +47127,7 @@ _Game2.default.defineSystems({
           }
 
           if (dynamicObject.collider.type === _shared.BULLET) {
-            (0, _actors.makeExplosion)(dynamicObject.transform.x, dynamicObject.transform.y);
+            (0, _actors.makeBlast)(dynamicObject.transform.x, dynamicObject.transform.y);
             _this.destroyList.add(dynamicObject);
           }
 
@@ -47147,8 +47147,8 @@ _Game2.default.defineSystems({
             y2 = t2.y;
 
 
-        var s1 = e1.sprite._sprite.width / 2;
-        var s2 = e2.sprite._sprite.width / 2;
+        var s1 = Math.sqrt(e1.sprite._sprite.width * e1.sprite._sprite.height) / 2;
+        var s2 = Math.sqrt(e2.sprite._sprite.width * e2.sprite._sprite.height) / 2;
 
         var d = (0, _Math.dist)(x1, y1, x2, y2);
         var depth = s1 + s2 - d;
@@ -47183,10 +47183,25 @@ _Game2.default.defineSystems({
           }
 
           if (collisionType === bulletEnemy) {
-            _this.destroyList.add(e1);
-            _this.destroyList.add(e2);
-            (0, _actors.makeExplosion)(e1.transform.x, e1.transform.y);
+            var _ref3 = e1.collider.type === _shared.BULLET ? [e1, e2] : [e2, e1],
+                _ref4 = _slicedToArray(_ref3, 2),
+                bullet = _ref4[0],
+                enemy = _ref4[1];
+
+            _this.destroyList.add(bullet);
+
+            enemy.flash = {};
+
+            var collisionAngle = (0, _Math.angleBetween)(bullet.transform.x, bullet.transform.y, enemy.transform.x, enemy.transform.y);
+            enemy.force.x += Math.cos(collisionAngle) * 20;
+            enemy.force.y += Math.sin(collisionAngle) * 20;
+            (0, _actors.makeBlast)(bullet.transform.x, bullet.transform.y);
             return;
+          }
+
+          if (collisionType === playerEnemy) {
+            player.flash = {};
+            _shared.camera.trauma = Math.min(10, _shared.camera.trauma + 0.5);
           }
 
           if (collisionType === playerEnemy || !collisionType && e1.collider.type === _shared.ENEMY) {
@@ -47195,10 +47210,10 @@ _Game2.default.defineSystems({
             var impactX = Math.cos(impactAngle);
             var impactY = Math.sin(impactAngle);
 
-            t1.x -= impactX * (depth / 6);
-            t1.y -= impactX * (depth / 6);
-            t2.x += impactX * (depth / 6);
-            t2.y += impactY * (depth / 6);
+            t1.x -= impactX * (depth / 12);
+            t1.y -= impactX * (depth / 12);
+            t2.x += impactX * (depth / 12);
+            t2.y += impactY * (depth / 12);
 
             // f2.x += v1.x;
             // f2.y += v1.y;
@@ -47208,6 +47223,8 @@ _Game2.default.defineSystems({
             // f1.y += v2.y;
             // f1.x -= v1.x;
             // f1.y -= v1.y;
+
+            return;
           }
         }
       });
@@ -47248,8 +47265,6 @@ _Game2.default.defineSystems({
 
   logic: {
     run: function run() {
-      _Game2.default.runSystem(_Game2.default.systemsByName.collision);
-      _Game2.default.runSystem(_Game2.default.systemsByName.collision);
       _Game2.default.runSystem(_Game2.default.systemsByName.collision);
       _Game2.default.runSystem(_Game2.default.systemsByName.physics);
     }
@@ -47293,7 +47308,8 @@ _Game2.default.defineSystems({
           scaleX = _e$sprite.scaleX,
           scaleY = _e$sprite.scaleY,
           texture = _e$sprite.texture,
-          _sprite = _e$sprite._sprite;
+          _sprite = _e$sprite._sprite,
+          alpha = _e$sprite.alpha;
 
 
       _sprite.texture = texture;
@@ -47301,6 +47317,30 @@ _Game2.default.defineSystems({
       _sprite.position.y = y;
       _sprite.scale.x = scaleX;
       _sprite.scale.y = scaleY;
+      _sprite.alpha = alpha;
+    }
+  },
+
+  flash: {
+    components: [Flash, Sprite],
+
+    each: function each(e) {
+      e.flash.time += _Game2.default.timer.delta;
+      if (e.flash.time >= e.flash.duration) {
+        e.sprite._sprite.tint = 0xFFFFFF;
+        e.removeComponent(Flash);
+      } else {
+        e.sprite._sprite.tint = Math.floor(0xFFFFFF - 0xFFFFFF * e.flash.time / e.flash.duration);
+      }
+    }
+  },
+
+  expand: {
+    components: [Expand, Sprite],
+
+    each: function each(e) {
+      e.sprite.scaleX += e.expand.amount;
+      e.sprite.scaleY += e.expand.amount;
     }
   },
 
@@ -47321,11 +47361,26 @@ _Game2.default.defineSystems({
           y1 = _shared.camera.y,
           target = _shared.camera.target,
           threshold = _shared.camera.threshold,
-          offset = _shared.camera.offset;
+          offset = _shared.camera.offset,
+          trauma = _shared.camera.trauma;
 
 
       _shared.stage.pivot.x = x1;
       _shared.stage.pivot.y = y1;
+      _shared.stage.rotation = 0;
+
+      if (trauma > 0) {
+        console.log(trauma);
+        var traumaCoefficient = Math.pow(trauma / 10, 2);
+        var traumaX = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
+        var traumaY = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
+        var traumaRotation = traumaCoefficient * _shared.rng.nextFloat(-0.02, 0.02);
+
+        _shared.stage.pivot.x += traumaX;
+        _shared.stage.pivot.y += traumaY;
+        _shared.stage.rotation += traumaRotation;
+        _shared.camera.trauma = Math.max(trauma - 0.1, 0);
+      }
 
       var orientation = target.state.orientation;
       var _target$transform = target.transform,
@@ -47356,7 +47411,33 @@ _Game2.default.defineSystems({
   }
 });
 
-},{"../../Game":193,"../../Math.js":197,"./actors":202,"./astar":203,"./components":205,"./resources":208,"./shared":209}],211:[function(require,module,exports){
+},{"../../Game":193,"../../Math.js":197,"./actors":202,"./astar":203,"./components":205,"./resources":208,"./shared":209,"./util":211}],211:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getOrientationFromRotation = getOrientationFromRotation;
+var RIGHT = exports.RIGHT = 'right';
+var LEFT = exports.LEFT = 'left';
+var UP = exports.UP = 'up';
+var DOWN = exports.DOWN = 'down';
+
+function getOrientationFromRotation(rotation) {
+  var step = Math.PI / 8;
+
+  if (rotation <= Math.PI / 4 || rotation >= Math.PI / 4 * 7) {
+    return RIGHT;
+  } else if (rotation >= Math.PI / 4 && rotation <= Math.PI / 4 * 3) {
+    return DOWN;
+  } else if (rotation >= Math.PI / 4 * 3 && rotation <= Math.PI / 4 * 5) {
+    return LEFT;
+  } else if (rotation >= Math.PI / 4 * 5 && rotation <= Math.PI / 4 * 7) {
+    return UP;
+  }
+}
+
+},{}],212:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47411,13 +47492,21 @@ var Node = function () {
 
 function getPathNodesFromMap(tiledMap) {
   var nodes = {};
+  console.log(tiledMap);
+  console.log(_resources.textures);
 
   var layers = tiledMap.layers,
       tilesets = tiledMap.tilesets,
       width = tiledMap.width,
       height = tiledMap.height;
 
-  var tileData = PIXI.loader.resources[tilesets[0].image + '_data'].data;
+
+  var dataResourceName = tilesets[0].image + '.data';
+  console.log(dataResourceName);
+  console.log(_resources.textures.tileData);
+  console.log(_resources.textures.tileData[dataResourceName].data);
+
+  var tileData = _resources.textures.tileData[dataResourceName].data;
 
   layers.forEach(function (layer) {
     var data = layer.data;
@@ -47454,7 +47543,8 @@ function getPathNodesFromMap(tiledMap) {
 }
 
 function loadTiledMap(name) {
-  var tiledMap = PIXI.loader.resources[name].data;
+  var tiledMap = _resources.textures.maps[name].data;
+
   world.graph = getPathNodesFromMap(tiledMap);
 
   var layers = tiledMap.layers,
@@ -47470,40 +47560,31 @@ function loadTiledMap(name) {
   world.tileSize = tilewidth;
 
   var tileset = tilesets[0];
-  var tileData = PIXI.loader.resources[tileset.image + '_data'].data;
-  var baseTexture = PIXI.loader.resources[tileset.image].texture.baseTexture;
+  var tileData = _resources.textures.tileData[tileset.image + '.data'].data;
+  var tiles = _resources.textures.tiles[tileset.image];
 
-  baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
-  var tiles = [];
-
-  for (var y = 0; y < baseTexture.height; y += tileheight) {
-    for (var x = 0; x < baseTexture.width; x += tilewidth) {
-      var rectangle = new PIXI.Rectangle(x, y, tilewidth, tileheight);
-      var texture = new PIXI.Texture(baseTexture, rectangle);
-      tiles.push(texture);
-    }
-  }
+  console.log(tiles);
 
   layers.forEach(function (layer) {
     for (var i = 0; i < layer.data.length; i++) {
       var id = layer.data[i];
 
       if (id) {
-        var _y = Math.floor(i / height);
-        var _x = i % width;
+        var y = Math.floor(i / height);
+        var x = i % width;
 
-        var _texture = tiles[id - 1];
+        var texture = tiles[id - 1];
         var tile = _Game2.default.createEntity();
         var type = tileData.tiles[id - 1].type;
 
 
         tile.transform = {
-          x: _x * tilewidth,
-          y: _y * tileheight
+          x: x * tilewidth,
+          y: y * tileheight
         };
 
         tile.sprite = {
-          texture: _texture,
+          texture: texture,
           anchorX: 0.5,
           anchorY: 0.5,
           scaleX: 1,
@@ -47546,7 +47627,7 @@ function loadMap(map, tileset) {
   }
 }
 
-},{"../../Game":193,"./resources":208}],212:[function(require,module,exports){
+},{"../../Game":193,"./resources":208}],213:[function(require,module,exports){
 'use strict';
 
 var _demo = require('./demos/demo3');
@@ -47577,4 +47658,4 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // console.log(g.query(e1));
 // console.log(g.query(e2));
 
-},{"./demos/demo3":206}]},{},[212]);
+},{"./demos/demo3":206}]},{},[213]);

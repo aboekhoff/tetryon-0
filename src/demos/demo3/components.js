@@ -13,7 +13,7 @@ export default Game.defineComponents({
     state: 'seek',
     path: null,
     timer: 0,
-    thinkTime: 2000,
+    thinkTime: 500,
   },
   Effect: {
     targetId: null,
@@ -30,12 +30,17 @@ export default Game.defineComponents({
     bullet: 'default',
   },
   SteeringControl: {
-    right: false,
-    left: false,
-    up: false,
-    down: false,
+    rotation: false,
+    accelerate: false,
     fire: false,
     action: false,
+  },
+  Flash: { 
+    duration: 500, 
+    time: 0 
+  },
+  Expand: {
+    amount: 0.001,
   },
   State: {
     orientation: 'down',
@@ -60,6 +65,7 @@ export default Game.defineComponents({
   },
   Sprite: [
     { 
+      alpha: 1,
       anchorX: 0.5, 
       anchorY: 0.5, 
       scaleX: 1, 

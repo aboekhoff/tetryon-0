@@ -1,0 +1,12 @@
+{ "columns":20,
+ "image":"tiles_dungeon.png",
+ "imageheight":384,
+ "imagewidth":320,
+ "margin":0,
+ "name":"tiles_dungeon",
+ "spacing":0,
+ "tilecount":480,
+ "tileheight":16,
+ "tilewidth":16,
+ "type":"tileset"
+}

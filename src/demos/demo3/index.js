@@ -11,11 +11,11 @@ import './input';
 window.game = Game;
 
 export default function start() {
-  load(() => {
+  load().then(() => {
     theme.once('load', () => theme.play());
     loadTiledMap('map2');
     const player = makePlayer(66 * 16, 48 * 16);
-    for (let i = 0; i < 24; i++) { makeEnemy(66 * 16, 42 * 16); }
+    for (let i = 0; i < 10; i++) { makeEnemy(66 * 16, 42 * 16); }
     
     camera.target = player;
     camera.x = player.transform.x;
@@ -27,5 +27,5 @@ export default function start() {
     Game.runSystem(Game.systemsByName.animation);
     Game.runSystem(Game.systemsByName.sprite);
     Game.start();  
-  })
+  });
 }

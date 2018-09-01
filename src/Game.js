@@ -82,7 +82,9 @@ class Game {
 
       set(params) {
         this.removeComponent(componentType);
-        this.addComponent(componentType, params);
+        if (params) {
+          this.addComponent(componentType, params);
+        }
       }
     });
   }

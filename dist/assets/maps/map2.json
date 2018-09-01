@@ -32,7 +32,7 @@
         {
          "columns":20,
          "firstgid":1,
-         "image":"dungeon_1",
+         "image":"tiles_dungeon_1.png",
          "imageheight":384,
          "imagewidth":320,
          "margin":0,

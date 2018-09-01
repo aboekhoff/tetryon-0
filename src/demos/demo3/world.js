@@ -25,9 +25,17 @@ class Node {
 
 export function getPathNodesFromMap(tiledMap) {
   const nodes = {};
+  console.log(tiledMap)
+  console.log(textures);
 
   const { layers, tilesets, width, height } = tiledMap;
-  const tileData = PIXI.loader.resources[`${tilesets[0].image}_data`].data;
+  
+  const dataResourceName = `${tilesets[0].image}.data`
+  console.log(dataResourceName);
+  console.log(textures.tileData);
+  console.log(textures.tileData[dataResourceName].data)
+
+  const tileData = textures.tileData[dataResourceName].data;
 
   layers.forEach(layer => {
     const data = layer.data;
@@ -61,7 +69,8 @@ export function getPathNodesFromMap(tiledMap) {
 }
 
 export function loadTiledMap(name) {
-  const tiledMap = PIXI.loader.resources[name].data;
+  const tiledMap = textures.maps[name].data;
+
   world.graph = getPathNodesFromMap(tiledMap);
 
   const { layers, tilesets, width, height, tilewidth, tileheight } = tiledMap;
@@ -71,19 +80,10 @@ export function loadTiledMap(name) {
   world.tileSize = tilewidth;
 
   const tileset = tilesets[0];
-  const tileData = PIXI.loader.resources[`${tileset.image}_data`].data;
-  const baseTexture = PIXI.loader.resources[tileset.image].texture.baseTexture;
+  const tileData = textures.tileData[`${tileset.image}.data`].data;
+  const tiles = textures.tiles[tileset.image];
 
-  baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
-  const tiles = [];
-
-  for (let y = 0; y < baseTexture.height; y += tileheight) {
-    for (let x = 0; x < baseTexture.width; x += tilewidth) {
-      const rectangle = new PIXI.Rectangle(x, y, tilewidth, tileheight);
-      const texture = new PIXI.Texture(baseTexture, rectangle);
-      tiles.push(texture);
-    }
-  }
+  console.log(tiles)
 
   layers.forEach(layer => {
     for (let i = 0; i < layer.data.length; i++) {

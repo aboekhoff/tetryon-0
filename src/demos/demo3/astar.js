@@ -50,8 +50,6 @@ export function astar(startTransform, goalTransform) {
   const goalKey = `${goalX}:${goalY}`;
   const goalNode = nodes[goalKey];
 
-  console.log(startNode, goalNode);
-
   return _astar(startNode, goalNode, graph.nodes);
 }
 

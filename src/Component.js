@@ -26,6 +26,11 @@ export function define1(name, defaults, events = {}) {
 
   const acquire = function(entityId, params = {}) {
     const component = pool.acquire();
+
+    if (component == null) {
+      debugger;
+    }
+
     component._eid = entityId;
     byEntityId.set(entityId, component);
 

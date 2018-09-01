@@ -14,7 +14,7 @@ export default class Entity {
     return this;
   }
 
-  removeComponent(componentType, params) {
+  removeComponent(componentType) {
     Entity.removeComponent(this, componentType);
     return this;
   }
@@ -56,6 +56,7 @@ Entity.addComponent = function(entity, componentType, params) {
 }
 
 Entity.removeComponent = function(entity, componentType) {
+  if (!(entity.mask & componentType.mask)) { return; }
   entity.mask &= ~componentType.mask;
   const component = componentType.byEntityId.get(entity.id);
   if (component) { componentType.release(component); }

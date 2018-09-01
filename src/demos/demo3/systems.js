@@ -1,10 +1,11 @@
 import Game from '../../Game';
 import components from './components';
-import { grid, actors, stage, camera, BULLET, ENEMY, PLAYER } from './shared';
+import { grid, actors, stage, camera, BULLET, ENEMY, PLAYER, rng } from './shared';
 import { angleBetween, turningAngle, wrapRotation, clamp, dist, intersects } from '../../Math.js';
-import { makeBullet, makeExplosion } from './actors';
+import { makeBullet, makeBlast, makeExplosion } from './actors';
 import { astar } from './astar';
 import { textures } from './resources';
+import { getOrientationFromRotation } from './util';
 
 const { 
   Force, 
@@ -17,10 +18,10 @@ const {
   Transform, 
   Velocity, 
   Animation, 
-  Sprite 
+  Sprite,
+  Flash,
+  Expand,
 } = components;
-
-let ctimer = 0;
 
 Game.defineSystems({
   input: {
@@ -31,30 +32,33 @@ Game.defineSystems({
       const player = actors.player;
       const sc = player.steeringControl;
 
-      sc.right = right.isDown;
-      sc.left = left.isDown;
-      sc.up = up.isDown;
-      sc.down = down.isDown;
+      const R = right.isDown;
+      const L = left.isDown;
+      const U = up.isDown;
+      const D = down.isDown;
+
+      sc.accelerate = R || L || U || D;
+
+      if (R && D) { sc.rotation = Math.PI/4; }
+      else if (L && D) { sc.rotation = Math.PI/4*3; }
+      else if (L && U) { sc.rotation = Math.PI/4*5; }
+      else if (R && U) { sc.rotation = Math.PI/4*7; }
+      else if (R) { sc.rotation = 0; }
+      else if (L) { sc.rotation = Math.PI; }
+      else if (D) { sc.rotation = Math.PI/2; }
+      else if (U) { sc.rotation = Math.PI/2*3; }
 
       if (fire.pressed) {
-        let x = 0;
-        let y = 0;
-
-        switch (player.state.orientation) {
-          case 'down': y = 1; break;
-          case 'right': x = 1; break;
-          case 'left': x = -1; break;
-          case 'up': y = -1; break;
-        }
+        const x = Math.cos(sc.rotation);
+        const y = Math.sin(sc.rotation);
 
         makeBullet(
           player.transform.x, 
           player.transform.y,
-          player.velocity.x + (x * 6),
-          player.velocity.y + (y * 6),
-        )
+          x * 6,
+          y * 6,
+        );
       }
-      
     }
   },
 
@@ -90,7 +94,7 @@ Game.defineSystems({
         const x2 = target.x * 16;
         const y2 = target.y * 16;
         
-        if (dist(x1, y1, x2, y2) < 8) {
+        if (dist(x1, y1, x2, y2) < 16) {
           e.targetControl.path.shift();
         } else {
           break;
@@ -126,28 +130,8 @@ Game.defineSystems({
       const x2 = target.x * 16;
       const y2 = target.y * 16;
       
-      const theta = angleBetween(x1, y1, x2, y2);
-
-      const dx = Math.cos(theta);
-      const dy = Math.sin(theta);
-
-      e.steeringControl.right = false;
-      e.steeringControl.left = false;
-      e.steeringControl.up = false;
-      e.steeringControl.down = false;
-
-
-      if (dx > 0) {
-        e.steeringControl.right = true;
-      } else if (dx < 0) {
-        e.steeringControl.left = true;
-      }
-
-      if (dy > 0) {
-        e.steeringControl.down = true;
-      } else if (dy < 0) {
-        e.steeringControl.up = true;
-      }
+      e.steeringControl.rotation = angleBetween(x1, y1, x2, y2);
+      e.steeringControl.accelerate = true;
     }
   },
 
@@ -155,33 +139,20 @@ Game.defineSystems({
     components: [SteeringControl, State, Force],
 
     each(e) {
-      const { right, left, up, down, fire } = e.steeringControl;
+      const { rotation, accelerate } = e.steeringControl;
       const f = e.force;
+      const dt = Game.timer.delta;
 
       e.state.moving = false;
 
-      if (right) { 
-        f.x += 1; 
-        e.state.orientation = 'right'; 
+      if (accelerate) {
+        e.state.orientation = getOrientationFromRotation(rotation);
         e.state.moving = true;
-      }
+        const dx = Math.cos(rotation);
+        const dy = Math.sin(rotation);
 
-      if (left) { 
-        f.x -= 1; 
-        e.state.orientation = 'left'; 
-        e.state.moving = true;
-      }
-      
-      if (up) { 
-        f.y -= 1; 
-        e.state.orientation = 'up'; 
-        e.state.moving = true;
-      }
-
-      if (down) { 
-        f.y += 1; 
-        e.state.orientation = 'down'; 
-        e.state.moving = true;
+        f.x += dx;
+        f.y += dy;
       }
     }
   },
@@ -263,10 +234,10 @@ Game.defineSystems({
           }
 
           if (dynamicObject.collider.type === BULLET) {
-            makeExplosion(dynamicObject.transform.x, dynamicObject.transform.y);
+            makeBlast(dynamicObject.transform.x, dynamicObject.transform.y);
             this.destroyList.add(dynamicObject);
           }
-          
+
           return;
         }
 
@@ -280,8 +251,8 @@ Game.defineSystems({
         const { x: x1, y: y1 } = t1;
         const { x: x2, y: y2 } = t2;
 
-        const s1 = e1.sprite._sprite.width / 2;
-        const s2 = e2.sprite._sprite.width / 2;
+        const s1 = Math.sqrt(e1.sprite._sprite.width * e1.sprite._sprite.height) / 2;
+        const s2 = Math.sqrt(e2.sprite._sprite.width * e2.sprite._sprite.height) / 2;
 
         const d = dist(x1, y1, x2, y2);
         const depth = (s1 + s2) - d;
@@ -315,10 +286,22 @@ Game.defineSystems({
           }
 
           if (collisionType === bulletEnemy) {
-            this.destroyList.add(e1);
-            this.destroyList.add(e2);
-            makeExplosion(e1.transform.x, e1.transform.y);
+            const [bullet, enemy] = e1.collider.type === BULLET ? [e1, e2] : [e2, e1];
+
+            this.destroyList.add(bullet);
+            
+            enemy.flash = {};
+            
+            const collisionAngle = angleBetween(bullet.transform.x, bullet.transform.y, enemy.transform.x, enemy.transform.y);
+            enemy.force.x += Math.cos(collisionAngle) * 20;
+            enemy.force.y += Math.sin(collisionAngle) * 20;
+            makeBlast(bullet.transform.x, bullet.transform.y);
             return;
+          }
+
+          if (collisionType === playerEnemy) {
+            player.flash = {};
+            camera.trauma = Math.min(10, camera.trauma + 0.5);
           }
 
           if (collisionType === playerEnemy ||
@@ -328,10 +311,10 @@ Game.defineSystems({
             const impactX = Math.cos(impactAngle);
             const impactY = Math.sin(impactAngle);
 
-            t1.x -= impactX * (depth / 6);
-            t1.y -= impactX * (depth / 6);
-            t2.x += impactX * (depth / 6);
-            t2.y += impactY * (depth / 6);
+            t1.x -= impactX * (depth / 12);
+            t1.y -= impactX * (depth / 12);
+            t2.x += impactX * (depth / 12);
+            t2.y += impactY * (depth / 12);
 
             // f2.x += v1.x;
             // f2.y += v1.y;
@@ -341,6 +324,8 @@ Game.defineSystems({
             // f1.y += v2.y;
             // f1.x -= v1.x;
             // f1.y -= v1.y;
+
+            return;
           }
   
         }
@@ -383,8 +368,6 @@ Game.defineSystems({
   logic: {
     run() {
       Game.runSystem(Game.systemsByName.collision);
-      Game.runSystem(Game.systemsByName.collision);
-      Game.runSystem(Game.systemsByName.collision);
       Game.runSystem(Game.systemsByName.physics);
     }
   },
@@ -418,13 +401,37 @@ Game.defineSystems({
 
     each(e) {
       const { x, y, scale } = e.transform;
-      const { anchorX, anchorY, scaleX, scaleY, texture, _sprite } = e.sprite;
+      const { anchorX, anchorY, scaleX, scaleY, texture, _sprite, alpha } = e.sprite;
 
       _sprite.texture = texture;
       _sprite.position.x = x;
       _sprite.position.y = y;
       _sprite.scale.x = scaleX;
       _sprite.scale.y = scaleY;
+      _sprite.alpha = alpha;
+    }
+  },
+
+  flash: {
+    components: [Flash, Sprite],
+
+    each (e) {
+      e.flash.time += Game.timer.delta;
+      if (e.flash.time >= e.flash.duration) {
+        e.sprite._sprite.tint = 0xFFFFFF;
+        e.removeComponent(Flash);
+      } else {
+        e.sprite._sprite.tint = Math.floor(0xFFFFFF - (0xFFFFFF * e.flash.time / e.flash.duration));
+      }  
+    }
+  },
+
+  expand: {
+    components: [Expand, Sprite],
+
+    each (e) {
+      e.sprite.scaleX += e.expand.amount;
+      e.sprite.scaleY += e.expand.amount;
     }
   },
 
@@ -441,11 +448,25 @@ Game.defineSystems({
 
   camera: {
     run() {
-      const { x: x1, y: y1, target, threshold, offset } = camera;
+      const { x: x1, y: y1, target, threshold, offset, trauma } = camera;
 
       stage.pivot.x = x1;
       stage.pivot.y = y1;
-      
+      stage.rotation = 0;
+
+      if (trauma > 0) {  
+        console.log(trauma)
+        const traumaCoefficient = Math.pow(trauma / 10, 2);
+        const traumaX = traumaCoefficient * (rng.nextFloat(-1, 1));
+        const traumaY = traumaCoefficient * (rng.nextFloat(-1, 1));
+        const traumaRotation = traumaCoefficient * (rng.nextFloat(-0.02, 0.02));
+
+        stage.pivot.x += traumaX;
+        stage.pivot.y += traumaY;
+        stage.rotation += traumaRotation;
+        camera.trauma = Math.max(trauma - 0.1, 0);
+      }
+
       const { orientation } = target.state;
       let { x: x2, y: y2 } = target.transform;
 

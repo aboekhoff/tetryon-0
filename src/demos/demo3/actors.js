@@ -35,8 +35,8 @@ function makeHumanAnimations(resource) {
 export function makeExplosion(x, y) {
   const numParticles = rng.nextInt(32, 256);
   for (let i = 0; i < numParticles; i++) {
-    const speed = rng.nextInt(4, 8);
-    const duration = rng.nextInt(50, 300);
+    const speed = rng.nextFloat(1, 3) * rng.nextFloat(1, 3);
+    const duration = rng.nextInt(50, 200);
     const rotation = rng.nextFloat(0, Math.PI * 2);
 
     const vx = Math.cos(rotation) * speed;
@@ -52,6 +52,19 @@ export function makeExplosion(x, y) {
       scaleX: 0.005,
       scaleY: 0.005,
     }
+  }
+}
+
+export function makeBlast(x, y) {
+  const e = Game.createEntity();
+  e.transform = { x, y };
+  e.expand = { amount: 0.01 };
+  e.duration = { time: 100 };
+  e.sprite = {
+    alpha: 1,
+    texture: textures.particles.particle2,
+    scaleX: 0.01,
+    scaleY: 0.01,
   }
 }
 
@@ -83,7 +96,7 @@ export function makeEnemy(x, y, avatar) {
 
   e.transform = { x, y, rotation: 0 };
   e.force = { x: 0, y: 0 };
-  e.velocity = { x: 0, y: 0, drag: 0.5 };
+  e.velocity = { x: 0, y: 0, drag: 0.45 };
   e.state = { orientation: 'down', moving: false },
   e.targetControl = {};
   e.steeringControl = {};
