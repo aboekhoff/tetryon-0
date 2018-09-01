@@ -45025,6 +45025,7 @@ var Game = function () {
     key: 'defineSystems',
     value: function defineSystems(spec) {
       var systems = _System2.default.define(spec);
+      console.log(systems);
       this.registerSystems.apply(this, _toConsumableArray(Object.keys(systems).map(function (key) {
         return systems[key];
       })));
@@ -45995,6 +45996,8 @@ function compileComponents(deps) {
 }
 
 function define1(name, spec) {
+  console.log(spec);
+
   var system = Object.assign({}, spec, {
     name: name,
     mask: compileComponents(spec.components)
@@ -46095,8 +46098,6 @@ var _Game2 = _interopRequireDefault(_Game);
 var _shared = require('./shared');
 
 var _resources = require('./resources');
-
-var _world = require('./world');
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -46223,7 +46224,7 @@ function makePlayer(x, y, avatar) {
   return e;
 }
 
-},{"../../Game":193,"./resources":208,"./shared":209,"./world":212}],203:[function(require,module,exports){
+},{"../../Game":193,"./resources":207,"./shared":208}],203:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -46359,7 +46360,7 @@ function _astar(start, goal, nodes) {
   return null;
 }
 
-},{"../../Math":197,"./world":212}],204:[function(require,module,exports){
+},{"../../Math":197,"./world":224}],204:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46397,7 +46398,6 @@ exports.default = _Game2.default.defineComponents({
   Velocity: { x: 0, y: 0 },
   Duration: { time: 0 },
   Orientation: { direction: 'right' },
-  Reference: { id: null },
   TargetControl: {
     targetId: null,
     state: 'seek',
@@ -46496,23 +46496,6 @@ exports.default = _Game2.default.defineComponents({
     }
   }],
   Collider: [{ type: null }, {
-    // acquire() {
-    //   const e = Game.getEntity(this._eid);
-
-    //   if (!e.transform) {
-    //     throw Error('Cannot add collider to entity without transform!');
-    //   }
-
-    //   if (!e.sprite) {
-    //     throw Error('Cannot add collider to entity without sprite!');
-    //   }
-
-    //   const { x, y } = e.transform;
-    //   const { width: w, height: h } = e.sprite._sprite;
-
-    //   grid.insert(this.x1, this.y1, this.x2, this.y2, e);
-    // },
-
     release: function release() {
       var e = _Game2.default.getEntity(this._eid);
       _shared.grid.remove(this._eid);
@@ -46520,7 +46503,7 @@ exports.default = _Game2.default.defineComponents({
   }]
 });
 
-},{"../../Game.js":193,"./shared.js":209}],206:[function(require,module,exports){
+},{"../../Game.js":193,"./shared.js":208}],206:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46544,11 +46527,14 @@ var _audio = require('./audio');
 
 require('./components');
 
-require('./systems');
+var _systems = require('./systems');
 
-require('./input');
+var _systems2 = _interopRequireDefault(_systems);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+console.log('yowtf');
+console.log(_systems2.default);
 
 window.game = _Game2.default;
 
@@ -46576,24 +46562,7 @@ function start() {
   });
 }
 
-},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./input":207,"./resources":208,"./shared":209,"./systems":210,"./world":212}],207:[function(require,module,exports){
-'use strict';
-
-var _Game = require('../../Game');
-
-var _Game2 = _interopRequireDefault(_Game);
-
-var _Input = require('../../Input');
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-_Game2.default.input.addButton('right', _Input.KEYS.RIGHT);
-_Game2.default.input.addButton('left', _Input.KEYS.LEFT);
-_Game2.default.input.addButton('up', _Input.KEYS.UP);
-_Game2.default.input.addButton('down', _Input.KEYS.DOWN);
-_Game2.default.input.addButton('fire', _Input.KEYS.SPACE);
-
-},{"../../Game":193,"../../Input":195}],208:[function(require,module,exports){
+},{"../../Game.js":193,"./actors":202,"./audio":204,"./components":205,"./resources":207,"./shared":208,"./systems":216,"./world":224}],207:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46769,7 +46738,7 @@ function load() {
 
 var callbacks = [];
 
-},{"pixi.js":125}],209:[function(require,module,exports){
+},{"pixi.js":125}],208:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -46840,578 +46809,860 @@ onresize();
 
 window.addEventListener('resize', onresize);
 
-},{"../../Grid.js":194,"../../Random.js":199,"pixi.js":125}],210:[function(require,module,exports){
+},{"../../Grid.js":194,"../../Random.js":199,"pixi.js":125}],209:[function(require,module,exports){
 'use strict';
 
-var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
 
-var _Game = require('../../Game');
+var _Game = require('../../../Game');
 
 var _Game2 = _interopRequireDefault(_Game);
 
-var _components = require('./components');
+var _components = require('../components');
 
 var _components2 = _interopRequireDefault(_components);
 
-var _shared = require('./shared');
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-var _Math = require('../../Math.js');
+var Animation = _components2.default.Animation,
+    Sprite = _components2.default.Sprite;
+exports.default = {
+  components: [Animation, Sprite],
 
-var _actors = require('./actors');
+  each: function each(e) {
+    var dt = _Game2.default.timer.delta;
+    var a = e.animation;
+    var s = e.sprite;
 
-var _astar = require('./astar');
+    a.elapsed += dt;
 
-var _resources = require('./resources');
+    if (a.active || !a.data.idle[a.frame]) {
+      if (a.elapsed >= a.data.speed) {
+        a.frame = (a.frame + 1) % a.data.frames.length;
+        a.elapsed = 0;
+      }
+    }
 
-var _util = require('./util');
+    s.texture = a.data.frames[a.frame];
+
+    var scaleX = Math.abs(s.scaleX);
+    s.scaleX = a.data.flip ? -scaleX : scaleX;
+  }
+};
+
+},{"../../../Game":193,"../components":205}],210:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-var Force = _components2.default.Force,
-    State = _components2.default.State,
-    Duration = _components2.default.Duration,
-    TargetControl = _components2.default.TargetControl,
-    SteeringControl = _components2.default.SteeringControl,
+var State = _components2.default.State,
     AnimationControl = _components2.default.AnimationControl,
-    Collider = _components2.default.Collider,
+    Animation = _components2.default.Animation;
+exports.default = {
+  components: [State, AnimationControl, Animation],
+
+  each: function each(e) {
+    var st = e.state;
+    var ac = e.animationControl;
+    var a = e.animation;
+
+    a.active = st.moving;
+
+    if (ac[st.orientation]) {
+      a.data = ac[st.orientation];
+    }
+  }
+};
+
+},{"../components":205}],211:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _shared = require('../shared');
+
+exports.default = {
+  run: function run() {
+    var x1 = _shared.camera.x,
+        y1 = _shared.camera.y,
+        target = _shared.camera.target,
+        threshold = _shared.camera.threshold,
+        offset = _shared.camera.offset,
+        trauma = _shared.camera.trauma;
+
+
+    _shared.stage.pivot.x = x1;
+    _shared.stage.pivot.y = y1;
+    _shared.stage.rotation = 0;
+
+    if (trauma > 0) {
+      console.log(trauma);
+      var traumaCoefficient = Math.pow(trauma / 10, 2);
+      var traumaX = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
+      var traumaY = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
+      var traumaRotation = traumaCoefficient * _shared.rng.nextFloat(-0.02, 0.02);
+
+      _shared.stage.pivot.x += traumaX;
+      _shared.stage.pivot.y += traumaY;
+      _shared.stage.rotation += traumaRotation;
+      _shared.camera.trauma = Math.max(trauma - 0.1, 0);
+    }
+
+    var orientation = target.state.orientation;
+    var _target$transform = target.transform,
+        x2 = _target$transform.x,
+        y2 = _target$transform.y;
+
+
+    switch (orientation) {
+      case 'right':
+        x2 += offset;
+        break;
+      case 'left':
+        x2 -= offset;
+        break;
+      case 'up':
+        y2 -= offset;
+        break;
+      case 'down':
+        y2 += offset;
+        break;
+    }
+
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    _shared.camera.x += dx / threshold * 0.15;
+    _shared.camera.y += dy / threshold * 0.15;
+  }
+};
+
+},{"../shared":208}],212:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _Math = require('../../../Math');
+
+var _actors = require('../actors');
+
+var _shared = require('../shared');
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Collider = _components2.default.Collider,
     Transform = _components2.default.Transform,
-    Velocity = _components2.default.Velocity,
-    Animation = _components2.default.Animation,
-    Sprite = _components2.default.Sprite,
-    Flash = _components2.default.Flash,
-    Expand = _components2.default.Expand;
+    Sprite = _components2.default.Sprite;
+exports.default = {
+  active: false,
+  components: [Collider, Transform, Sprite],
+  destroyList: new Set(),
 
+  each: function each(e) {
+    var _e$transform = e.transform,
+        x = _e$transform.x,
+        y = _e$transform.y;
+    var _e$sprite$_sprite = e.sprite._sprite,
+        w = _e$sprite$_sprite.width,
+        h = _e$sprite$_sprite.height;
 
-_Game2.default.defineSystems({
-  input: {
-    run: function run() {
-      _Game2.default.input.update();
-
-      var _Game$input$buttons = _Game2.default.input.buttons,
-          right = _Game$input$buttons.right,
-          left = _Game$input$buttons.left,
-          up = _Game$input$buttons.up,
-          down = _Game$input$buttons.down,
-          fire = _Game$input$buttons.fire;
-
-      var player = _shared.actors.player;
-      var sc = player.steeringControl;
-
-      var R = right.isDown;
-      var L = left.isDown;
-      var U = up.isDown;
-      var D = down.isDown;
-
-      sc.accelerate = R || L || U || D;
-
-      if (R && D) {
-        sc.rotation = Math.PI / 4;
-      } else if (L && D) {
-        sc.rotation = Math.PI / 4 * 3;
-      } else if (L && U) {
-        sc.rotation = Math.PI / 4 * 5;
-      } else if (R && U) {
-        sc.rotation = Math.PI / 4 * 7;
-      } else if (R) {
-        sc.rotation = 0;
-      } else if (L) {
-        sc.rotation = Math.PI;
-      } else if (D) {
-        sc.rotation = Math.PI / 2;
-      } else if (U) {
-        sc.rotation = Math.PI / 2 * 3;
-      }
-
-      if (fire.pressed) {
-        var x = Math.cos(sc.rotation);
-        var y = Math.sin(sc.rotation);
-
-        (0, _actors.makeBullet)(player.transform.x, player.transform.y, x * 6, y * 6);
-      }
-    }
+    _shared.grid.move(x - w / 2, y - h / 2, x + w / 2, y + h / 2, e.id);
   },
+  after: function after() {
+    var _this = this;
 
-  targetControl: {
-    components: [TargetControl, Transform, SteeringControl],
-    showPath: false,
+    _shared.grid.getCandidates().forEach(function (_ref) {
+      var _ref2 = _slicedToArray(_ref, 2),
+          eid1 = _ref2[0],
+          eid2 = _ref2[1];
 
-    each: function each(e) {
-      e.targetControl.timer -= _Game2.default.timer.delta;
+      var e1 = _Game2.default.getEntity(eid1);
+      var e2 = _Game2.default.getEntity(eid2);
 
-      if (e.targetControl.timer <= 0) {
-        e.targetControl.timer = e.targetControl.thinkTime;
-        e.targetControl.path = (0, _astar.astar)({
-          x: e.transform.x + 8,
-          y: e.transform.y + 8
-        }, {
-          x: _shared.actors.player.transform.x + 8,
-          y: _shared.actors.player.transform.y + 8
-        });
-      }
-
-      if (e.targetControl.path == null) {
+      if (!(0, _Math.intersects)(e1.sprite._sprite, e2.sprite._sprite)) {
         return;
       }
 
-      while (e.targetControl.path.length) {
-        var _target = e.targetControl.path[0];
+      if (e1.collider.static && e2.collider.static) {
+        return;
+      }
 
-        var _e$transform = e.transform,
-            _x = _e$transform.x,
-            _y = _e$transform.y;
+      if (e1.collider.static || e2.collider.static) {
+        var staticObject = void 0,
+            dynamicObject = void 0;
 
-        var _x2 = _target.x * 16;
-        var _y2 = _target.y * 16;
+        if (e1.collider.static) {
+          staticObject = e1;
+          dynamicObject = e2;
+        }
 
-        if ((0, _Math.dist)(_x, _y, _x2, _y2) < 16) {
-          e.targetControl.path.shift();
+        if (e2.collider.static) {
+          staticObject = e2;
+          dynamicObject = e1;
+        }
+
+        var ds = dynamicObject.sprite._sprite;
+        var ss = staticObject.sprite._sprite;
+
+        var dw = ds.width,
+            dh = ds.height;
+        var sw = ss.width,
+            sh = ss.height;
+        var _dynamicObject$transf = dynamicObject.transform,
+            _x = _dynamicObject$transf.x,
+            _y = _dynamicObject$transf.y;
+        var _staticObject$transfo = staticObject.transform,
+            _x2 = _staticObject$transfo.x,
+            _y2 = _staticObject$transfo.y;
+
+
+        var a = _x + dw / 2 < _x2 - sw / 2;
+        var b = _x - dw / 2 > _x2 + sw / 2;
+        var c = _y + dh / 2 < _y2 - sh / 2;
+        var _d = _y - dh / 2 > _y2 + sh / 2;
+
+        if (Math.abs(_x - _x2) >= Math.abs(_y - _y2)) {
+          dynamicObject.transform.x = _x < _x2 ? _x2 - sw / 2 - dw / 2 : _x2 + sw / 2 + dw / 2;
+          dynamicObject.velocity.x *= -1;
         } else {
-          break;
+          dynamicObject.transform.y = _y < _y2 ? _y2 - sh / 2 - dh / 2 : _y2 + sh / 2 + dh / 2;
+          dynamicObject.velocity.y *= -1;
         }
-      }
 
-      if (this.showPath) {
-        e.targetControl.path.forEach(function (node) {
-          var e = _Game2.default.createEntity();
+        if (dynamicObject.collider.type === _shared.BULLET) {
+          (0, _actors.makeBlast)(dynamicObject.transform.x, dynamicObject.transform.y);
+          _this.destroyList.add(dynamicObject);
+        }
 
-          e.transform = {
-            x: node.x * 16,
-            y: node.y * 16
-          };
-
-          e.sprite = {
-            texture: _resources.textures.particles.particle2,
-            scaleX: 0.01,
-            scaleY: 0.01
-          };
-
-          e.duration = {
-            time: 100
-          };
-        });
-      }
-
-      var target = e.targetControl.path[0];
-
-      if (!target) {
         return;
       }
 
-      var _e$transform2 = e.transform,
-          x1 = _e$transform2.x,
-          y1 = _e$transform2.y;
+      var t1 = e1.transform;
+      var t2 = e2.transform;
+      var v1 = e1.velocity;
+      var f1 = e1.force;
+      var v2 = e2.velocity;
+      var f2 = e2.force;
 
-      var x2 = target.x * 16;
-      var y2 = target.y * 16;
+      var x1 = t1.x,
+          y1 = t1.y;
+      var x2 = t2.x,
+          y2 = t2.y;
 
-      e.steeringControl.rotation = (0, _Math.angleBetween)(x1, y1, x2, y2);
-      e.steeringControl.accelerate = true;
-    }
-  },
 
-  steeringControl: {
-    components: [SteeringControl, State, Force],
+      var s1 = Math.sqrt(e1.sprite._sprite.width * e1.sprite._sprite.height) / 2;
+      var s2 = Math.sqrt(e2.sprite._sprite.width * e2.sprite._sprite.height) / 2;
 
-    each: function each(e) {
-      var _e$steeringControl = e.steeringControl,
-          rotation = _e$steeringControl.rotation,
-          accelerate = _e$steeringControl.accelerate;
+      var d = (0, _Math.dist)(x1, y1, x2, y2);
+      var depth = s1 + s2 - d;
 
-      var f = e.force;
-      var dt = _Game2.default.timer.delta;
+      var dt = game.timer.delta;
 
-      e.state.moving = false;
+      if (depth > 0) {
+        var bulletEnemy = _shared.BULLET ^ _shared.ENEMY;
+        var playerEnemy = _shared.PLAYER ^ _shared.ENEMY;
+        var collisionType = e1.collider.type ^ e2.collider.type;
 
-      if (accelerate) {
-        e.state.orientation = (0, _util.getOrientationFromRotation)(rotation);
-        e.state.moving = true;
-        var dx = Math.cos(rotation);
-        var dy = Math.sin(rotation);
-
-        f.x += dx;
-        f.y += dy;
-      }
-    }
-  },
-
-  animationControl: {
-    components: [State, AnimationControl, Animation],
-
-    each: function each(e) {
-      var st = e.state;
-      var ac = e.animationControl;
-      var a = e.animation;
-
-      a.active = st.moving;
-
-      if (ac[st.orientation]) {
-        a.data = ac[st.orientation];
-      }
-    }
-  },
-
-  collision: {
-    active: false,
-    components: [Collider, Transform, Sprite],
-    destroyList: new Set(),
-
-    each: function each(e) {
-      var _e$transform3 = e.transform,
-          x = _e$transform3.x,
-          y = _e$transform3.y;
-      var _e$sprite$_sprite = e.sprite._sprite,
-          w = _e$sprite$_sprite.width,
-          h = _e$sprite$_sprite.height;
-
-      _shared.grid.move(x - w / 2, y - h / 2, x + w / 2, y + h / 2, e.id);
-    },
-    after: function after() {
-      var _this = this;
-
-      _shared.grid.getCandidates().forEach(function (_ref) {
-        var _ref2 = _slicedToArray(_ref, 2),
-            eid1 = _ref2[0],
-            eid2 = _ref2[1];
-
-        var e1 = _Game2.default.getEntity(eid1);
-        var e2 = _Game2.default.getEntity(eid2);
-
-        if (!(0, _Math.intersects)(e1.sprite._sprite, e2.sprite._sprite)) {
-          return;
-        }
-
-        if (e1.collider.static && e2.collider.static) {
-          return;
-        }
+        var _staticObject = void 0,
+            _dynamicObject = void 0;
 
         if (e1.collider.static || e2.collider.static) {
-          var staticObject = void 0,
-              dynamicObject = void 0;
-
           if (e1.collider.static) {
-            staticObject = e1;
-            dynamicObject = e2;
+            _staticObject = e1;
+            _dynamicObject = e2;
           }
 
           if (e2.collider.static) {
-            staticObject = e2;
-            dynamicObject = e1;
+            _staticObject = e2;
+            _dynamicObject = e1;
           }
 
-          var ds = dynamicObject.sprite._sprite;
-          var ss = staticObject.sprite._sprite;
+          var dx = _dynamicObject.transform.x - _staticObject.transform.x;
+          var dy = _dynamicObject.transform.y - _staticObject.transform.y;
 
-          var dw = ds.width,
-              dh = ds.height;
-          var sw = ss.width,
-              sh = ss.height;
-          var _dynamicObject$transf = dynamicObject.transform,
-              _x3 = _dynamicObject$transf.x,
-              _y3 = _dynamicObject$transf.y;
-          var _staticObject$transfo = staticObject.transform,
-              _x4 = _staticObject$transfo.x,
-              _y4 = _staticObject$transfo.y;
-
-
-          var a = _x3 + dw / 2 < _x4 - sw / 2;
-          var b = _x3 - dw / 2 > _x4 + sw / 2;
-          var c = _y3 + dh / 2 < _y4 - sh / 2;
-          var _d = _y3 - dh / 2 > _y4 + sh / 2;
-
-          if (Math.abs(_x3 - _x4) >= Math.abs(_y3 - _y4)) {
-            dynamicObject.transform.x = _x3 < _x4 ? _x4 - sw / 2 - dw / 2 : _x4 + sw / 2 + dw / 2;
-            dynamicObject.velocity.x *= -1;
-          } else {
-            dynamicObject.transform.y = _y3 < _y4 ? _y4 - sh / 2 - dh / 2 : _y4 + sh / 2 + dh / 2;
-            dynamicObject.velocity.y *= -1;
-          }
-
-          if (dynamicObject.collider.type === _shared.BULLET) {
-            (0, _actors.makeBlast)(dynamicObject.transform.x, dynamicObject.transform.y);
-            _this.destroyList.add(dynamicObject);
-          }
-
+          _dynamicObject.transform.x += dx * 0.25;
+          _dynamicObject.transform.y += dy * 0.25;
           return;
         }
 
-        var t1 = e1.transform;
-        var t2 = e2.transform;
-        var v1 = e1.velocity;
-        var f1 = e1.force;
-        var v2 = e2.velocity;
-        var f2 = e2.force;
+        if (collisionType === bulletEnemy) {
+          var _ref3 = e1.collider.type === _shared.BULLET ? [e1, e2] : [e2, e1],
+              _ref4 = _slicedToArray(_ref3, 2),
+              bullet = _ref4[0],
+              enemy = _ref4[1];
 
-        var x1 = t1.x,
-            y1 = t1.y;
-        var x2 = t2.x,
-            y2 = t2.y;
+          _this.destroyList.add(bullet);
 
+          enemy.flash = {};
 
-        var s1 = Math.sqrt(e1.sprite._sprite.width * e1.sprite._sprite.height) / 2;
-        var s2 = Math.sqrt(e2.sprite._sprite.width * e2.sprite._sprite.height) / 2;
-
-        var d = (0, _Math.dist)(x1, y1, x2, y2);
-        var depth = s1 + s2 - d;
-
-        var dt = game.timer.delta;
-
-        if (depth > 0) {
-          var bulletEnemy = _shared.BULLET ^ _shared.ENEMY;
-          var playerEnemy = _shared.PLAYER ^ _shared.ENEMY;
-          var collisionType = e1.collider.type ^ e2.collider.type;
-
-          var _staticObject = void 0,
-              _dynamicObject = void 0;
-
-          if (e1.collider.static || e2.collider.static) {
-            if (e1.collider.static) {
-              _staticObject = e1;
-              _dynamicObject = e2;
-            }
-
-            if (e2.collider.static) {
-              _staticObject = e2;
-              _dynamicObject = e1;
-            }
-
-            var dx = _dynamicObject.transform.x - _staticObject.transform.x;
-            var dy = _dynamicObject.transform.y - _staticObject.transform.y;
-
-            _dynamicObject.transform.x += dx * 0.25;
-            _dynamicObject.transform.y += dy * 0.25;
-            return;
-          }
-
-          if (collisionType === bulletEnemy) {
-            var _ref3 = e1.collider.type === _shared.BULLET ? [e1, e2] : [e2, e1],
-                _ref4 = _slicedToArray(_ref3, 2),
-                bullet = _ref4[0],
-                enemy = _ref4[1];
-
-            _this.destroyList.add(bullet);
-
-            enemy.flash = {};
-
-            var collisionAngle = (0, _Math.angleBetween)(bullet.transform.x, bullet.transform.y, enemy.transform.x, enemy.transform.y);
-            enemy.force.x += Math.cos(collisionAngle) * 20;
-            enemy.force.y += Math.sin(collisionAngle) * 20;
-            (0, _actors.makeBlast)(bullet.transform.x, bullet.transform.y);
-            return;
-          }
-
-          if (collisionType === playerEnemy) {
-            player.flash = {};
-            _shared.camera.trauma = Math.min(10, _shared.camera.trauma + 0.5);
-          }
-
-          if (collisionType === playerEnemy || !collisionType && e1.collider.type === _shared.ENEMY) {
-
-            var impactAngle = (0, _Math.angleBetween)(x1, y1, x2, y2);
-            var impactX = Math.cos(impactAngle);
-            var impactY = Math.sin(impactAngle);
-
-            t1.x -= impactX * (depth / 12);
-            t1.y -= impactX * (depth / 12);
-            t2.x += impactX * (depth / 12);
-            t2.y += impactY * (depth / 12);
-
-            // f2.x += v1.x;
-            // f2.y += v1.y;
-            // f2.x -= v2.x;
-            // f2.y -= v2.y;
-            // f1.x += v2.x;
-            // f1.y += v2.y;
-            // f1.x -= v1.x;
-            // f1.y -= v1.y;
-
-            return;
-          }
+          var collisionAngle = (0, _Math.angleBetween)(bullet.transform.x, bullet.transform.y, enemy.transform.x, enemy.transform.y);
+          enemy.force.x += Math.cos(collisionAngle) * 20;
+          enemy.force.y += Math.sin(collisionAngle) * 20;
+          (0, _actors.makeBlast)(bullet.transform.x, bullet.transform.y);
+          return;
         }
-      });
 
-      this.destroyList.forEach(function (e) {
-        e.release();
-      });
+        if (collisionType === playerEnemy) {
+          player.flash = {};
+          _shared.camera.trauma = Math.min(10, _shared.camera.trauma + 0.5);
+        }
 
-      this.destroyList.clear();
+        if (collisionType === playerEnemy || !collisionType && e1.collider.type === _shared.ENEMY) {
+
+          var impactAngle = (0, _Math.angleBetween)(x1, y1, x2, y2);
+          var impactX = Math.cos(impactAngle);
+          var impactY = Math.sin(impactAngle);
+
+          t1.x -= impactX * (depth / 12);
+          t1.y -= impactX * (depth / 12);
+          t2.x += impactX * (depth / 12);
+          t2.y += impactY * (depth / 12);
+
+          // f2.x += v1.x;
+          // f2.y += v1.y;
+          // f2.x -= v2.x;
+          // f2.y -= v2.y;
+          // f1.x += v2.x;
+          // f1.y += v2.y;
+          // f1.x -= v1.x;
+          // f1.y -= v1.y;
+
+          return;
+        }
+      }
+    });
+
+    this.destroyList.forEach(function (e) {
+      e.release();
+    });
+
+    this.destroyList.clear();
+  }
+};
+
+},{"../../../Game":193,"../../../Math":197,"../actors":202,"../components":205,"../shared":208}],213:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Duration = _components2.default.Duration;
+exports.default = {
+  components: [Duration],
+
+  each: function each(e) {
+    e.duration.time -= _Game2.default.timer.delta;
+    if (e.duration.time <= 0) {
+      e.release();
     }
-  },
+  }
+};
 
-  physics: {
+},{"../../../Game":193,"../components":205}],214:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Expand = _components2.default.Expand,
+    Sprite = _components2.default.Sprite;
+exports.default = {
+  components: [Expand, Sprite],
+
+  each: function each(e) {
+    e.sprite.scaleX += e.expand.amount;
+    e.sprite.scaleY += e.expand.amount;
+  }
+};
+
+},{"../components":205}],215:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Flash = _components2.default.Flash,
+    Sprite = _components2.default.Sprite;
+exports.default = {
+  components: [Flash, Sprite],
+
+  each: function each(e) {
+    e.flash.time += _Game2.default.timer.delta;
+    if (e.flash.time >= e.flash.duration) {
+      e.sprite._sprite.tint = 0xFFFFFF;
+      e.removeComponent(Flash);
+    } else {
+      e.sprite._sprite.tint = Math.floor(0xFFFFFF - 0xFFFFFF * e.flash.time / e.flash.duration);
+    }
+  }
+};
+
+},{"../../../Game":193,"../components":205}],216:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _animation = require('./animation');
+
+var _animation2 = _interopRequireDefault(_animation);
+
+var _animationControl = require('./animationControl');
+
+var _animationControl2 = _interopRequireDefault(_animationControl);
+
+var _camera = require('./camera');
+
+var _camera2 = _interopRequireDefault(_camera);
+
+var _collision = require('./collision');
+
+var _collision2 = _interopRequireDefault(_collision);
+
+var _duration = require('./duration');
+
+var _duration2 = _interopRequireDefault(_duration);
+
+var _expand = require('./expand');
+
+var _expand2 = _interopRequireDefault(_expand);
+
+var _flash = require('./flash');
+
+var _flash2 = _interopRequireDefault(_flash);
+
+var _input = require('./input');
+
+var _input2 = _interopRequireDefault(_input);
+
+var _logic = require('./logic');
+
+var _logic2 = _interopRequireDefault(_logic);
+
+var _physics = require('./physics');
+
+var _physics2 = _interopRequireDefault(_physics);
+
+var _sprite = require('./sprite');
+
+var _sprite2 = _interopRequireDefault(_sprite);
+
+var _steeringControl = require('./steeringControl');
+
+var _steeringControl2 = _interopRequireDefault(_steeringControl);
+
+var _targetControl = require('./targetControl');
+
+var _targetControl2 = _interopRequireDefault(_targetControl);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+exports.default = _Game2.default.defineSystems({
+  input: _input2.default,
+  targetControl: _targetControl2.default,
+  steeringControl: _steeringControl2.default,
+  animationControl: _animationControl2.default,
+  collision: _collision2.default,
+  physics: _physics2.default,
+  logic: _logic2.default,
+  expand: _expand2.default,
+  flash: _flash2.default,
+  duration: _duration2.default,
+  animation: _animation2.default,
+  sprite: _sprite2.default,
+  camera: _camera2.default
+});
+
+},{"../../../Game":193,"./animation":209,"./animationControl":210,"./camera":211,"./collision":212,"./duration":213,"./expand":214,"./flash":215,"./input":217,"./logic":218,"./physics":219,"./sprite":220,"./steeringControl":221,"./targetControl":222}],217:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _Input = require('../../../Input');
+
+var _shared = require('../shared');
+
+var _actors = require('../actors');
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+_Game2.default.input.addButton('right', _Input.KEYS.RIGHT);
+_Game2.default.input.addButton('left', _Input.KEYS.LEFT);
+_Game2.default.input.addButton('up', _Input.KEYS.UP);
+_Game2.default.input.addButton('down', _Input.KEYS.DOWN);
+_Game2.default.input.addButton('fire', _Input.KEYS.SPACE);
+
+exports.default = {
+  run: function run() {
+    _Game2.default.input.update();
+
+    var _Game$input$buttons = _Game2.default.input.buttons,
+        right = _Game$input$buttons.right,
+        left = _Game$input$buttons.left,
+        up = _Game$input$buttons.up,
+        down = _Game$input$buttons.down,
+        fire = _Game$input$buttons.fire;
+
+    var player = _shared.actors.player;
+    var sc = player.steeringControl;
+
+    var R = right.isDown;
+    var L = left.isDown;
+    var U = up.isDown;
+    var D = down.isDown;
+
+    sc.accelerate = R || L || U || D;
+
+    if (R && D) {
+      sc.rotation = Math.PI / 4;
+    } else if (L && D) {
+      sc.rotation = Math.PI / 4 * 3;
+    } else if (L && U) {
+      sc.rotation = Math.PI / 4 * 5;
+    } else if (R && U) {
+      sc.rotation = Math.PI / 4 * 7;
+    } else if (R) {
+      sc.rotation = 0;
+    } else if (L) {
+      sc.rotation = Math.PI;
+    } else if (D) {
+      sc.rotation = Math.PI / 2;
+    } else if (U) {
+      sc.rotation = Math.PI / 2 * 3;
+    }
+
+    if (fire.pressed) {
+      var x = Math.cos(sc.rotation);
+      var y = Math.sin(sc.rotation);
+      var _player$sprite$_sprit = player.sprite._sprite,
+          width = _player$sprite$_sprit.width,
+          height = _player$sprite$_sprit.height;
+
+      var r = Math.sqrt(width * width + height * height);
+
+      (0, _actors.makeBlast)(player.transform.x + x * r / 2, player.transform.y + y * r / 2);
+
+      (0, _actors.makeBullet)(player.transform.x + x * r / 2, player.transform.y + y * r / 2, x * 6, y * 6);
+    }
+  }
+};
+
+},{"../../../Game":193,"../../../Input":195,"../actors":202,"../shared":208}],218:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+exports.default = {
+  run: function run() {
+    _Game2.default.runSystem(_Game2.default.systemsByName.collision);
+    _Game2.default.runSystem(_Game2.default.systemsByName.physics);
+  }
+};
+
+},{"../../../Game":193}],219:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Transform = _components2.default.Transform,
+    Force = _components2.default.Force,
+    Velocity = _components2.default.Velocity;
+exports.default = {
     active: false,
     components: [Transform, Force, Velocity],
 
     each: function each(e) {
-      var t = e.transform;
-      var f = e.force;
-      var v = e.velocity;
+        var t = e.transform;
+        var f = e.force;
+        var v = e.velocity;
 
-      v.x += f.x;
-      v.y += f.y;
+        v.x += f.x;
+        v.y += f.y;
 
-      f.x = 0;
-      f.y = 0;
+        f.x = 0;
+        f.y = 0;
 
-      if (v.drag) {
-        v.x -= v.x * v.drag;
-        v.y -= v.y * v.drag;
-      }
-
-      t.x += v.x;
-      t.y += v.y;
-      t.rotation += v.rotation;
-    }
-  },
-
-  logic: {
-    run: function run() {
-      _Game2.default.runSystem(_Game2.default.systemsByName.collision);
-      _Game2.default.runSystem(_Game2.default.systemsByName.physics);
-    }
-  },
-
-  animation: {
-    components: [Animation, Sprite],
-
-    each: function each(e) {
-      var dt = _Game2.default.timer.delta;
-      var a = e.animation;
-      var s = e.sprite;
-
-      a.elapsed += dt;
-
-      if (a.active || !a.data.idle[a.frame]) {
-        if (a.elapsed >= a.data.speed) {
-          a.frame = (a.frame + 1) % a.data.frames.length;
-          a.elapsed = 0;
+        if (v.drag) {
+            v.x -= v.x * v.drag;
+            v.y -= v.y * v.drag;
         }
-      }
 
-      s.texture = a.data.frames[a.frame];
-
-      var scaleX = Math.abs(s.scaleX);
-      s.scaleX = a.data.flip ? -scaleX : scaleX;
+        t.x += v.x;
+        t.y += v.y;
+        t.rotation += v.rotation;
     }
-  },
+};
 
-  sprite: {
-    components: [Transform, Sprite],
+},{"../components":205}],220:[function(require,module,exports){
+'use strict';
 
-    each: function each(e) {
-      var _e$transform4 = e.transform,
-          x = _e$transform4.x,
-          y = _e$transform4.y,
-          scale = _e$transform4.scale;
-      var _e$sprite = e.sprite,
-          anchorX = _e$sprite.anchorX,
-          anchorY = _e$sprite.anchorY,
-          scaleX = _e$sprite.scaleX,
-          scaleY = _e$sprite.scaleY,
-          texture = _e$sprite.texture,
-          _sprite = _e$sprite._sprite,
-          alpha = _e$sprite.alpha;
-
-
-      _sprite.texture = texture;
-      _sprite.position.x = x;
-      _sprite.position.y = y;
-      _sprite.scale.x = scaleX;
-      _sprite.scale.y = scaleY;
-      _sprite.alpha = alpha;
-    }
-  },
-
-  flash: {
-    components: [Flash, Sprite],
-
-    each: function each(e) {
-      e.flash.time += _Game2.default.timer.delta;
-      if (e.flash.time >= e.flash.duration) {
-        e.sprite._sprite.tint = 0xFFFFFF;
-        e.removeComponent(Flash);
-      } else {
-        e.sprite._sprite.tint = Math.floor(0xFFFFFF - 0xFFFFFF * e.flash.time / e.flash.duration);
-      }
-    }
-  },
-
-  expand: {
-    components: [Expand, Sprite],
-
-    each: function each(e) {
-      e.sprite.scaleX += e.expand.amount;
-      e.sprite.scaleY += e.expand.amount;
-    }
-  },
-
-  duration: {
-    components: [Duration],
-
-    each: function each(e) {
-      e.duration.time -= _Game2.default.timer.delta;
-      if (e.duration.time <= 0) {
-        e.release();
-      }
-    }
-  },
-
-  camera: {
-    run: function run() {
-      var x1 = _shared.camera.x,
-          y1 = _shared.camera.y,
-          target = _shared.camera.target,
-          threshold = _shared.camera.threshold,
-          offset = _shared.camera.offset,
-          trauma = _shared.camera.trauma;
-
-
-      _shared.stage.pivot.x = x1;
-      _shared.stage.pivot.y = y1;
-      _shared.stage.rotation = 0;
-
-      if (trauma > 0) {
-        console.log(trauma);
-        var traumaCoefficient = Math.pow(trauma / 10, 2);
-        var traumaX = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
-        var traumaY = traumaCoefficient * _shared.rng.nextFloat(-1, 1);
-        var traumaRotation = traumaCoefficient * _shared.rng.nextFloat(-0.02, 0.02);
-
-        _shared.stage.pivot.x += traumaX;
-        _shared.stage.pivot.y += traumaY;
-        _shared.stage.rotation += traumaRotation;
-        _shared.camera.trauma = Math.max(trauma - 0.1, 0);
-      }
-
-      var orientation = target.state.orientation;
-      var _target$transform = target.transform,
-          x2 = _target$transform.x,
-          y2 = _target$transform.y;
-
-
-      switch (orientation) {
-        case 'right':
-          x2 += offset;
-          break;
-        case 'left':
-          x2 -= offset;
-          break;
-        case 'up':
-          y2 -= offset;
-          break;
-        case 'down':
-          y2 += offset;
-          break;
-      }
-
-      var dx = x2 - x1;
-      var dy = y2 - y1;
-      _shared.camera.x += dx / threshold * 0.15;
-      _shared.camera.y += dy / threshold * 0.15;
-    }
-  }
+Object.defineProperty(exports, "__esModule", {
+  value: true
 });
 
-},{"../../Game":193,"../../Math.js":197,"./actors":202,"./astar":203,"./components":205,"./resources":208,"./shared":209,"./util":211}],211:[function(require,module,exports){
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var Transform = _components2.default.Transform,
+    Sprite = _components2.default.Sprite;
+exports.default = {
+  components: [Transform, Sprite],
+
+  each: function each(e) {
+    var _e$transform = e.transform,
+        x = _e$transform.x,
+        y = _e$transform.y;
+    var _e$sprite = e.sprite,
+        scaleX = _e$sprite.scaleX,
+        scaleY = _e$sprite.scaleY,
+        texture = _e$sprite.texture,
+        _sprite = _e$sprite._sprite,
+        alpha = _e$sprite.alpha;
+
+
+    _sprite.texture = texture;
+    _sprite.position.x = x;
+    _sprite.position.y = y;
+    _sprite.scale.x = scaleX;
+    _sprite.scale.y = scaleY;
+    _sprite.alpha = alpha;
+  }
+};
+
+},{"../components":205}],221:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+var _util = require('../util');
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var SteeringControl = _components2.default.SteeringControl,
+    State = _components2.default.State,
+    Force = _components2.default.Force;
+exports.default = {
+  components: [SteeringControl, State, Force],
+
+  each: function each(e) {
+    var _e$steeringControl = e.steeringControl,
+        rotation = _e$steeringControl.rotation,
+        accelerate = _e$steeringControl.accelerate;
+
+    var f = e.force;
+    var dt = _Game2.default.timer.delta;
+
+    e.state.moving = false;
+
+    if (accelerate) {
+      e.state.orientation = (0, _util.getOrientationFromRotation)(rotation);
+      e.state.moving = true;
+      var dx = Math.cos(rotation);
+      var dy = Math.sin(rotation);
+
+      f.x += dx;
+      f.y += dy;
+    }
+  }
+};
+
+},{"../../../Game":193,"../components":205,"../util":223}],222:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Game = require('../../../Game');
+
+var _Game2 = _interopRequireDefault(_Game);
+
+var _Math = require('../../../Math');
+
+var _astar = require('../astar');
+
+var _shared = require('../shared');
+
+var _components = require('../components');
+
+var _components2 = _interopRequireDefault(_components);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var TargetControl = _components2.default.TargetControl,
+    Transform = _components2.default.Transform,
+    SteeringControl = _components2.default.SteeringControl;
+exports.default = {
+  components: [TargetControl, Transform, SteeringControl],
+  showPath: false,
+
+  each: function each(e) {
+    e.targetControl.timer -= _Game2.default.timer.delta;
+
+    if (e.targetControl.timer <= 0) {
+      e.targetControl.timer = e.targetControl.thinkTime;
+      e.targetControl.path = (0, _astar.astar)({
+        x: e.transform.x + 8,
+        y: e.transform.y + 8
+      }, {
+        x: _shared.actors.player.transform.x + 8,
+        y: _shared.actors.player.transform.y + 8
+      });
+    }
+
+    if (e.targetControl.path == null) {
+      return;
+    }
+
+    while (e.targetControl.path.length) {
+      var _target = e.targetControl.path[0];
+
+      var _e$transform = e.transform,
+          _x = _e$transform.x,
+          _y = _e$transform.y;
+
+      var _x2 = _target.x * 16;
+      var _y2 = _target.y * 16;
+
+      if ((0, _Math.dist)(_x, _y, _x2, _y2) < 16) {
+        e.targetControl.path.shift();
+      } else {
+        break;
+      }
+    }
+
+    if (this.showPath) {
+      e.targetControl.path.forEach(function (node) {
+        var e = _Game2.default.createEntity();
+
+        e.transform = {
+          x: node.x * 16,
+          y: node.y * 16
+        };
+
+        e.sprite = {
+          texture: _shared.textures.particles.particle2,
+          scaleX: 0.01,
+          scaleY: 0.01
+        };
+
+        e.duration = {
+          time: 100
+        };
+      });
+    }
+
+    var target = e.targetControl.path[0];
+
+    if (!target) {
+      return;
+    }
+
+    var _e$transform2 = e.transform,
+        x1 = _e$transform2.x,
+        y1 = _e$transform2.y;
+
+    var x2 = target.x * 16;
+    var y2 = target.y * 16;
+
+    e.steeringControl.rotation = (0, _Math.angleBetween)(x1, y1, x2, y2);
+    e.steeringControl.accelerate = true;
+  }
+};
+
+},{"../../../Game":193,"../../../Math":197,"../astar":203,"../components":205,"../shared":208}],223:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47437,7 +47688,7 @@ function getOrientationFromRotation(rotation) {
   }
 }
 
-},{}],212:[function(require,module,exports){
+},{}],224:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -47627,7 +47878,7 @@ function loadMap(map, tileset) {
   }
 }
 
-},{"../../Game":193,"./resources":208}],213:[function(require,module,exports){
+},{"../../Game":193,"./resources":207}],225:[function(require,module,exports){
 'use strict';
 
 var _demo = require('./demos/demo3');
@@ -47658,4 +47909,4 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // console.log(g.query(e1));
 // console.log(g.query(e2));
 
-},{"./demos/demo3":206}]},{},[213]);
+},{"./demos/demo3":206}]},{},[225]);

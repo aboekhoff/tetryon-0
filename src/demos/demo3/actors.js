@@ -1,7 +1,6 @@
 import Game from '../../Game';
 import { actors, rng, BULLET, ENEMY, PLAYER } from './shared';
 import { textures } from './resources';
-import { world } from './world';
 
 function makeHumanAnimations(resource) {
   return {

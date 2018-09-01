@@ -16,6 +16,8 @@ function compileComponents(deps) {
 }
 
 function define1(name, spec) {
+  console.log(spec);
+
   const system = Object.assign(
     {}, 
     spec, 

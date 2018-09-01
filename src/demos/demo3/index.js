@@ -5,8 +5,10 @@ import { camera } from './shared';
 import { loadTiledMap } from './world';
 import { theme } from './audio';
 import './components';
-import './systems';
-import './input';
+import systems from './systems';
+
+console.log('yowtf')
+console.log(systems);
 
 window.game = Game;
 

@@ -67,6 +67,7 @@ class Game {
 
   defineSystems(spec) {
     const systems = System.define(spec);
+    console.log(systems);
     this.registerSystems(...Object.keys(systems).map(key => systems[key]));
     return systems;
   }

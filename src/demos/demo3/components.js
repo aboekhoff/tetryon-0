@@ -7,7 +7,6 @@ export default Game.defineComponents({
   Velocity: { x: 0, y: 0 },
   Duration: { time: 0 },
   Orientation: { direction: 'right' },
-  Reference: { id: null },
   TargetControl: { 
     targetId: null,
     state: 'seek',
@@ -107,23 +106,6 @@ export default Game.defineComponents({
   Collider: [
     { type: null },
     { 
-      // acquire() {
-      //   const e = Game.getEntity(this._eid);
-        
-      //   if (!e.transform) {
-      //     throw Error('Cannot add collider to entity without transform!');
-      //   }
-
-      //   if (!e.sprite) {
-      //     throw Error('Cannot add collider to entity without sprite!');
-      //   }
-
-      //   const { x, y } = e.transform;
-      //   const { width: w, height: h } = e.sprite._sprite;
-
-      //   grid.insert(this.x1, this.y1, this.x2, this.y2, e);
-      // },
-
       release() {
         const e = Game.getEntity(this._eid);
         grid.remove(this._eid);
